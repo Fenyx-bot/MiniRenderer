@@ -1,6 +1,3 @@
-C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\basic.frag
-C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\basic.vert
-C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\uniform.frag
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Renderer.exe
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Renderer.deps.json
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Renderer.runtimeconfig.json
@@ -33,3 +30,8 @@ C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\refint\R
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.pdb
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.genruntimeconfig.cache
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\ref\Renderer.dll
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\sprite.frag
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\sprite.vert
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Textures\crate.png
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\StbImageSharp.dll
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Textures\awesome_face.png

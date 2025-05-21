@@ -24,7 +24,7 @@ namespace MiniRenderer.Engine
             // Native window settings
             NativeWindowSettings nativeWindowSettings = new NativeWindowSettings
             {
-                Size = new Vector2i(width, height),
+                ClientSize = new Vector2i(width, height),
                 Title = title,
                 // This is needed to run on macOS
                 Flags = ContextFlags.ForwardCompatible
