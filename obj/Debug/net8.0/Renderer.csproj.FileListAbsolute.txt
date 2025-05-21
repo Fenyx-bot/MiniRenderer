@@ -32,6 +32,11 @@ C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\ref\Renderer.dll
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\sprite.frag
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\sprite.vert
-C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Textures\crate.png
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\StbImageSharp.dll
-C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Textures\awesome_face.png
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\model.frag
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\model.vert
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\wireframe.frag
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\wireframe.vert
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\awesome_face.png
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\container.jpg
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\crate.png

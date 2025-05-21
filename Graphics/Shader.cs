@@ -16,6 +16,9 @@ namespace MiniRenderer.Graphics
         // Cache for uniform locations
         private readonly Dictionary<string, int> _uniformLocations;
 
+        // Flag to control error output
+        private bool _suppressUniformWarnings = true;
+
         // Flag for resource disposal
         private bool _disposed = false;
 
@@ -98,6 +101,15 @@ namespace MiniRenderer.Graphics
         }
 
         /// <summary>
+        /// Set whether to suppress warnings about missing uniforms
+        /// </summary>
+        /// <param name="suppress">True to suppress warnings, false to show them</param>
+        public void SuppressUniformWarnings(bool suppress)
+        {
+            _suppressUniformWarnings = suppress;
+        }
+
+        /// <summary>
         /// Check if a shader compiled successfully
         /// </summary>
         /// <param name="shader">The shader to check</param>
@@ -153,6 +165,16 @@ namespace MiniRenderer.Graphics
         }
 
         /// <summary>
+        /// Check if a uniform exists in this shader
+        /// </summary>
+        /// <param name="name">The name of the uniform</param>
+        /// <returns>True if the uniform exists, false otherwise</returns>
+        public bool HasUniform(string name)
+        {
+            return _uniformLocations.ContainsKey(name) || GL.GetUniformLocation(Handle, name) != -1;
+        }
+
+        /// <summary>
         /// Find the location of a uniform
         /// </summary>
         /// <param name="name">The name of the uniform</param>
@@ -171,7 +193,10 @@ namespace MiniRenderer.Graphics
             // If the uniform was not found or not used
             if (location == -1)
             {
-                Console.WriteLine($"Warning: Uniform '{name}' not found or not active");
+                if (!_suppressUniformWarnings)
+                {
+                    Console.WriteLine($"Warning: Uniform '{name}' not found or not active");
+                }
             }
             else
             {
@@ -189,8 +214,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetBool(string name, bool value)
         {
-            Use();
-            GL.Uniform1(GetUniformLocation(name), value ? 1 : 0);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.Uniform1(location, value ? 1 : 0);
+            }
         }
 
         /// <summary>
@@ -198,8 +228,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetInt(string name, int value)
         {
-            Use();
-            GL.Uniform1(GetUniformLocation(name), value);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.Uniform1(location, value);
+            }
         }
 
         /// <summary>
@@ -207,8 +242,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetFloat(string name, float value)
         {
-            Use();
-            GL.Uniform1(GetUniformLocation(name), value);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.Uniform1(location, value);
+            }
         }
 
         /// <summary>
@@ -216,8 +256,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetVector2(string name, Vector2 value)
         {
-            Use();
-            GL.Uniform2(GetUniformLocation(name), value);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.Uniform2(location, value);
+            }
         }
 
         /// <summary>
@@ -225,8 +270,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetVector3(string name, Vector3 value)
         {
-            Use();
-            GL.Uniform3(GetUniformLocation(name), value);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.Uniform3(location, value);
+            }
         }
 
         /// <summary>
@@ -234,8 +284,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetVector4(string name, Vector4 value)
         {
-            Use();
-            GL.Uniform4(GetUniformLocation(name), value);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.Uniform4(location, value);
+            }
         }
 
         /// <summary>
@@ -243,8 +298,13 @@ namespace MiniRenderer.Graphics
         /// </summary>
         public void SetMatrix4(string name, Matrix4 value)
         {
-            Use();
-            GL.UniformMatrix4(GetUniformLocation(name), false, ref value);
+            // Get uniform location
+            int location = GetUniformLocation(name);
+            if (location != -1)
+            {
+                Use();
+                GL.UniformMatrix4(location, false, ref value);
+            }
         }
 
         #endregion

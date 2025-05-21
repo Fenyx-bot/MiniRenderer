@@ -16,27 +16,33 @@ namespace MiniRenderer.Engine
     {
         private readonly GameWindow _window;
 
-        // OpenGL objects
-        private VertexArray _quadVAO;
-        private VertexBuffer _quadVBO;
-        private ElementBuffer _quadEBO;
+        // Camera
+        private Camera3D _camera;
 
         // Shaders
-        private Shader _spriteShader;
+        private Shader _modelShader;
+        private Shader _wireframeShader;
+
+        // Meshes
+        private Mesh _solidCube;
+        private Mesh _wireframeCube;
+        private Mesh _grid;
 
         // Textures
-        private Texture _crateTexture;
-        private Texture _faceTexture;
-        private Texture _whiteTexture;
+        private Texture _containerTexture;
+        private Texture _defaultTexture;
 
-        // Sprites
-        private List<Sprite> _sprites = new List<Sprite>();
+        // Mouse state
+        private Vector2 _lastMousePosition;
+        private bool _firstMouseMove = true;
+        private bool _mouseCaptured = false;
 
-        // Camera
-        private Camera2D _camera;
-
-        // Timing and animation
+        // Animation
         private float _time = 0.0f;
+
+        // Drawing mode
+        private enum DrawMode { Solid, Wireframe, Both }
+        private DrawMode _drawMode = DrawMode.Both;
 
         // Flag for proper resource disposal
         private bool _disposed = false;
@@ -55,6 +61,7 @@ namespace MiniRenderer.Engine
             _window.UpdateFrame += OnUpdateFrame;
             _window.RenderFrame += OnRenderFrame;
             _window.KeyDown += OnKeyDown;
+            _window.MouseMove += OnMouseMove;
             _window.MouseWheel += OnMouseWheel;
         }
 
@@ -65,301 +72,320 @@ namespace MiniRenderer.Engine
         {
             Console.WriteLine("OpenGL Version: " + GL.GetString(StringName.Version));
 
-            // Enable alpha blending
-            GL.Enable(EnableCap.Blend);
-            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+            // Enable depth testing
+            GL.Enable(EnableCap.DepthTest);
 
             // Set a background color (dark blue)
             GL.ClearColor(0.0f, 0.1f, 0.2f, 1.0f);
 
-            // Create our resources
-            CreateQuad();
-            CreateShaders();
-            LoadTextures();
-            CreateSprites();
+            // Create directory for shaders if it doesn't exist
+            Directory.CreateDirectory("Shaders");
 
-            // Create camera
-            _camera = new Camera2D(_window.Size.X, _window.Size.Y);
+            // Create shaders
+            CreateShaders();
+
+            // Load textures
+            LoadTextures();
+
+            // Create meshes
+            CreateMeshes();
+
+            // Create 3D camera
+            _camera = new Camera3D(new Vector3(0, 1, 3), _window.Size.X, _window.Size.Y);
 
             // Print controls
-            Console.WriteLine("Controls:");
-            Console.WriteLine("  WASD - Move camera");
-            Console.WriteLine("  Q/E - Rotate camera");
-            Console.WriteLine("  Mouse Wheel - Zoom in/out");
-            Console.WriteLine("  R - Reset camera");
-            Console.WriteLine("  Space - Add a random sprite");
-            Console.WriteLine("  Escape - Exit");
+            PrintControls();
         }
 
         /// <summary>
-        /// Create a quad for sprite rendering
-        /// </summary>
-        private void CreateQuad()
-        {
-            // Create a Vertex Array Object (VAO)
-            _quadVAO = new VertexArray();
-            _quadVAO.Bind();
-
-            // Quad vertices with position and texture coordinates
-            // Positions are from 0 to 1 in both dimensions
-            // Position (X, Y), Texture Coord (U, V), Color (R, G, B, A)
-            float[] vertices = {
-                // Position    // TexCoords   // Color
-                0.0f, 0.0f,    0.0f, 0.0f,    1.0f, 1.0f, 1.0f, 1.0f,  // Bottom-left
-                1.0f, 0.0f,    1.0f, 0.0f,    1.0f, 1.0f, 1.0f, 1.0f,  // Bottom-right
-                1.0f, 1.0f,    1.0f, 1.0f,    1.0f, 1.0f, 1.0f, 1.0f,  // Top-right
-                0.0f, 1.0f,    0.0f, 1.0f,    1.0f, 1.0f, 1.0f, 1.0f   // Top-left
-            };
-
-            // Indices for the quad (forming two triangles)
-            uint[] indices = {
-                0, 1, 2,  // First triangle
-                2, 3, 0   // Second triangle
-            };
-
-            // Create and bind the Vertex Buffer Object (VBO)
-            _quadVBO = new VertexBuffer();
-            _quadVBO.Bind();
-            _quadVBO.SetData(vertices);
-
-            // Create and bind the Element Buffer Object (EBO)
-            _quadEBO = new ElementBuffer();
-            _quadEBO.Bind();
-            _quadEBO.SetData(indices);
-
-            // Set up vertex attributes
-
-            // Position attribute (2 floats)
-            GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 8 * sizeof(float), 0);
-            GL.EnableVertexAttribArray(0);
-
-            // Texture coordinate attribute (2 floats)
-            GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, 8 * sizeof(float), 2 * sizeof(float));
-            GL.EnableVertexAttribArray(1);
-
-            // Color attribute (4 floats)
-            GL.VertexAttribPointer(2, 4, VertexAttribPointerType.Float, false, 8 * sizeof(float), 4 * sizeof(float));
-            GL.EnableVertexAttribArray(2);
-
-            // Unbind VAO to prevent accidental modification
-            _quadVAO.Unbind();
-        }
-
-        /// <summary>
-        /// Create and load the shaders
+        /// Create and initialize shaders
         /// </summary>
         private void CreateShaders()
         {
-            // Create shader directory if it doesn't exist
-            Directory.CreateDirectory("Shaders");
+            // Create model shader files if they don't exist
+            string modelVertPath = "Shaders/model.vert";
+            string modelFragPath = "Shaders/model.frag";
 
-            // Paths to shader files
-            string vertPath = "Shaders/sprite.vert";
-            string fragPath = "Shaders/sprite.frag";
-
-            // Create shader files if they don't exist
-            if (!File.Exists(vertPath))
+            if (!File.Exists(modelVertPath))
             {
-                File.WriteAllText(vertPath, @"#version 330 core
-layout(location = 0) in vec2 aPosition;
+                File.WriteAllText(modelVertPath, @"#version 330 core
+layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec2 aTexCoord;
-layout(location = 2) in vec4 aColor;
+layout(location = 2) in vec3 aNormal;
+layout(location = 3) in vec4 aColor;
 
 out vec2 texCoord;
+out vec3 normal;
 out vec4 vertexColor;
 
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
+uniform bool uUseTexture;
 
 void main()
 {
-    gl_Position = uProjection * uView * uModel * vec4(aPosition, 0.0, 1.0);
+    gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
     texCoord = aTexCoord;
+    
+    // Transform the normal to world space
+    normal = mat3(transpose(inverse(uModel))) * aNormal;
+    
     vertexColor = aColor;
 }");
             }
 
-            if (!File.Exists(fragPath))
+            if (!File.Exists(modelFragPath))
             {
-                File.WriteAllText(fragPath, @"#version 330 core
+                File.WriteAllText(modelFragPath, @"#version 330 core
 in vec2 texCoord;
+in vec3 normal;
 in vec4 vertexColor;
 
 out vec4 FragColor;
 
 uniform sampler2D uTexture;
 uniform bool uUseTexture;
+uniform vec4 uColor;
 
 void main()
 {
+    // Normalize the normal
+    vec3 norm = normalize(normal);
+    
+    // Basic lighting calculation
+    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3)); // Light direction
+    float diff = max(dot(norm, lightDir), 0.0); // Diffuse factor
+    
+    // Ambient lighting
+    float ambientStrength = 0.3;
+    vec3 ambient = ambientStrength * vec3(1.0);
+    
+    // Combine ambient and diffuse
+    vec3 lighting = ambient + diff * vec3(0.7);
+    
     if (uUseTexture)
     {
+        // Sample the texture
         vec4 texColor = texture(uTexture, texCoord);
-        FragColor = texColor * vertexColor;
+        
+        // Apply lighting to the texture color
+        FragColor = vec4(texColor.rgb * lighting, texColor.a) * uColor;
     }
     else
     {
-        FragColor = vertexColor;
+        // Apply lighting to the vertex color
+        FragColor = vec4(vertexColor.rgb * lighting, vertexColor.a) * uColor;
     }
 }");
             }
 
-            // Load the shader
+            // Create wireframe shader files if they don't exist
+            string wireframeVertPath = "Shaders/wireframe.vert";
+            string wireframeFragPath = "Shaders/wireframe.frag";
+
+            if (!File.Exists(wireframeVertPath))
+            {
+                File.WriteAllText(wireframeVertPath, @"#version 330 core
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec4 aColor;
+
+out vec4 vertexColor;
+
+uniform mat4 uModel;
+uniform mat4 uView;
+uniform mat4 uProjection;
+uniform bool uUseTexture; // Added but unused to avoid warnings
+
+void main()
+{
+    gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
+    vertexColor = aColor;
+}");
+            }
+
+            if (!File.Exists(wireframeFragPath))
+            {
+                File.WriteAllText(wireframeFragPath, @"#version 330 core
+in vec4 vertexColor;
+
+out vec4 FragColor;
+
+uniform vec4 uColor;
+uniform bool uUseTexture; // Added but unused to avoid warnings
+uniform sampler2D uTexture; // Added but unused to avoid warnings
+
+void main()
+{
+    FragColor = vertexColor * uColor;
+}");
+            }
+
+            // Load the shaders
             try
             {
-                _spriteShader = Shader.FromFiles(vertPath, fragPath);
-                Console.WriteLine("Sprite shader loaded successfully");
+                _modelShader = Shader.FromFiles(modelVertPath, modelFragPath);
+                _wireframeShader = Shader.FromFiles(wireframeVertPath, wireframeFragPath);
+
+                // Set the texture unit for the model shader
+                _modelShader.Use();
+                _modelShader.SetInt("uTexture", 0);
+
+                // Set the texture unit for the wireframe shader to avoid warnings
+                _wireframeShader.Use();
+                _wireframeShader.SetInt("uTexture", 0);
+
+                Console.WriteLine("Shaders loaded successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading sprite shader: {ex.Message}");
+                Console.WriteLine($"Error loading shaders: {ex.Message}");
                 throw;
             }
         }
 
         /// <summary>
-        /// Load textures for sprite rendering
+        /// Load textures
         /// </summary>
         private void LoadTextures()
         {
             // Create the Textures directory if it doesn't exist
-            Directory.CreateDirectory("Textures");
+            Directory.CreateDirectory("Assets/Textures");
 
-            // Create a white texture for untextured sprites
-            _whiteTexture = Texture.CreateWhiteTexture();
+            // Create a default texture
+            _defaultTexture = Texture.CreateWhiteTexture();
 
-            // Try to load textures
+            // Try to load the container texture
             try
             {
-                if (File.Exists("Textures/crate.png"))
+                if (File.Exists("Assets/Textures/container.jpg"))
                 {
-                    _crateTexture = new Texture("Textures/crate.png");
+                    _containerTexture = new Texture("Assets/Textures/container.jpg");
+                    Console.WriteLine("Container texture loaded successfully");
                 }
                 else
                 {
-                    // Use default texture if file not found
-                    _crateTexture = _whiteTexture;
-                    Console.WriteLine("Texture 'crate.png' not found, using default white texture");
-                }
-
-                if (File.Exists("Textures/awesome_face.png"))
-                {
-                    _faceTexture = new Texture("Textures/awesome_face.png");
-                }
-                else
-                {
-                    // Use default texture if file not found
-                    _faceTexture = _whiteTexture;
-                    Console.WriteLine("Texture 'awesome_face.png' not found, using default white texture");
+                    _containerTexture = _defaultTexture;
+                    Console.WriteLine("Texture 'container.jpg' not found, using default white texture");
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error loading textures: {ex.Message}");
-                // Use default texture if error occurs
-                _crateTexture = _whiteTexture;
-                _faceTexture = _whiteTexture;
+                _containerTexture = _defaultTexture;
             }
         }
 
         /// <summary>
-        /// Create initial sprites
+        /// Create mesh objects
         /// </summary>
-        private void CreateSprites()
+        private void CreateMeshes()
         {
-            // Create a crate sprite at the center
-            var crateSprite = new Sprite(_crateTexture, new Vector2(0.0f, 0.0f), new Vector2(0.5f));
-            _sprites.Add(crateSprite);
+            // Create a solid cube
+            _solidCube = Mesh.CreateCube(1.0f);
+            _solidCube.Texture = _containerTexture;
+            _solidCube.Position = new Vector3(0.0f, 0.0f, 0.0f);
 
-            // Create a face sprite to the right
-            var faceSprite = new Sprite(_faceTexture, new Vector2(0.7f, 0.0f), new Vector2(0.4f));
-            _sprites.Add(faceSprite);
+            // Create a wireframe cube
+            _wireframeCube = Mesh.CreateCube(1.02f, true);
+            _wireframeCube.Color = new Vector4(0.0f, 1.0f, 1.0f, 1.0f); // Cyan
+            _wireframeCube.Position = new Vector3(0.0f, 0.0f, 0.0f);
 
-            // Create a red rectangle to the left
-            var redRect = new Sprite(new Vector2(-0.7f, 0.0f), new Vector2(0.3f, 0.6f), new Vector4(1.0f, 0.0f, 0.0f, 1.0f));
-            _sprites.Add(redRect);
-
-            // Create a blue rectangle below
-            var blueRect = new Sprite(new Vector2(0.0f, -0.7f), new Vector2(0.6f, 0.3f), new Vector4(0.0f, 0.5f, 1.0f, 1.0f));
-            _sprites.Add(blueRect);
-
-            // Create a semi-transparent green square above
-            var greenSquare = new Sprite(new Vector2(0.0f, 0.7f), new Vector2(0.4f), new Vector4(0.0f, 1.0f, 0.0f, 0.5f));
-            _sprites.Add(greenSquare);
+            // Create a grid
+            _grid = Mesh.CreateGrid(10.0f, 10.0f, 10);
+            _grid.Color = new Vector4(0.5f, 0.5f, 0.5f, 1.0f); // Gray
         }
 
         /// <summary>
-        /// Add a random sprite at a random position
+        /// Print controls to the console
         /// </summary>
-        private void AddRandomSprite()
+        private void PrintControls()
         {
-            // Generate random values
-            Random random = new Random();
-
-            // Random position in visible area
-            float x = (float)random.NextDouble() * 3.0f - 1.5f;
-            float y = (float)random.NextDouble() * 3.0f - 1.5f;
-
-            // Random size
-            float size = (float)random.NextDouble() * 0.4f + 0.2f;
-
-            // Random color
-            float r = (float)random.NextDouble();
-            float g = (float)random.NextDouble();
-            float b = (float)random.NextDouble();
-            float a = (float)random.NextDouble() * 0.5f + 0.5f; // Semi-transparent to opaque
-
-            // 50% chance of having a texture
-            bool useTexture = true;//random.Next(2) == 0;
-
-            // Create the sprite
-            Sprite sprite;
-            if (useTexture)
-            {
-                // Use either crate or face texture
-                Texture texture = random.Next(2) == 0 ? _crateTexture : _faceTexture;
-                sprite = new Sprite(texture, new Vector2(x, y), new Vector2(size));
-                sprite.Color = new Vector4(r, g, b, a); // Apply tint
-            }
-            else
-            {
-                // Create a colored rectangle
-                sprite = new Sprite(new Vector2(x, y), new Vector2(size, size * (float)random.NextDouble() + 0.5f), new Vector4(r, g, b, a));
-            }
-
-            // Add the sprite
-            _sprites.Add(sprite);
-            Console.WriteLine($"Added sprite at ({x:F2}, {y:F2}) with size {size:F2}");
+            Console.WriteLine("Controls:");
+            Console.WriteLine("  WASD - Move camera");
+            Console.WriteLine("  Space/Shift - Move camera up/down");
+            Console.WriteLine("  Mouse - Look around (click to capture/release mouse)");
+            Console.WriteLine("  Mouse Wheel - Zoom in/out");
+            Console.WriteLine("  R - Reset camera");
+            Console.WriteLine("  T - Reset cube position and rotation");
+            Console.WriteLine("  M - Toggle drawing mode (solid/wireframe/both)");
+            Console.WriteLine("  P - Toggle projection mode (perspective/orthographic)");
+            Console.WriteLine("  Arrow Keys - Rotate cube");
+            Console.WriteLine("  Page Up/Down - Scale cube");
+            Console.WriteLine("  Escape - Exit");
         }
 
         /// <summary>
-        /// Handle key down events
+        /// Called when a key is pressed
         /// </summary>
         private void OnKeyDown(KeyboardKeyEventArgs e)
         {
-            if (e.Key == Keys.Space)
+            switch (e.Key)
             {
-                // Add a random sprite when space is pressed
-                AddRandomSprite();
-            }
-            else if (e.Key == Keys.R)
-            {
-                // Reset camera when R is pressed
-                _camera.Position = Vector2.Zero;
-                _camera.Rotation = 0.0f;
-                _camera.Zoom = 1.0f;
-                Console.WriteLine("Camera reset");
+                case Keys.R:
+                    // Reset camera
+                    _camera = new Camera3D(new Vector3(0, 1, 3), _window.Size.X, _window.Size.Y);
+                    Console.WriteLine("Camera reset");
+                    break;
+
+                case Keys.T:
+                    // Reset cube position and rotation
+                    _solidCube.Position = Vector3.Zero;
+                    _solidCube.Rotation = Vector3.Zero;
+                    _solidCube.Scale = Vector3.One;
+
+                    _wireframeCube.Position = Vector3.Zero;
+                    _wireframeCube.Rotation = Vector3.Zero;
+                    _wireframeCube.Scale = Vector3.One;
+                    Console.WriteLine("Cube reset");
+                    break;
+
+                case Keys.M:
+                    // Toggle drawing mode
+                    _drawMode = (DrawMode)(((int)_drawMode + 1) % 3);
+                    Console.WriteLine($"Drawing mode: {_drawMode}");
+                    break;
+
+                case Keys.P:
+                    // Toggle projection mode
+                    _camera.ToggleProjectionMode();
+                    Console.WriteLine($"Projection mode: {_camera.Mode}");
+                    break;
             }
         }
 
         /// <summary>
-        /// Handle mouse wheel events for camera zooming
+        /// Called when the mouse moves
+        /// </summary>
+        private void OnMouseMove(MouseMoveEventArgs e)
+        {
+            if (!_mouseCaptured)
+                return;
+
+            // Skip the first mouse move to avoid a large jump
+            if (_firstMouseMove)
+            {
+                _lastMousePosition = new Vector2(e.X, e.Y);
+                _firstMouseMove = false;
+                return;
+            }
+
+            // Calculate mouse offset
+            float xOffset = e.X - _lastMousePosition.X;
+            float yOffset = e.Y - _lastMousePosition.Y;
+            _lastMousePosition = new Vector2(e.X, e.Y);
+
+            // Rotate the camera based on mouse movement
+            _camera.Rotate(xOffset, yOffset);
+        }
+
+        /// <summary>
+        /// Called when the mouse wheel is scrolled
         /// </summary>
         private void OnMouseWheel(MouseWheelEventArgs e)
         {
-            // Adjust zoom based on mouse wheel movement
-            _camera.AdjustZoom(e.OffsetY * 0.1f);
+            // Adjust the camera's zoom
+            _camera.AdjustZoom(e.OffsetY);
         }
 
         /// <summary>
@@ -367,10 +393,10 @@ void main()
         /// </summary>
         private void OnResize(ResizeEventArgs e)
         {
-            // Update viewport when the window is resized
+            // Update viewport
             GL.Viewport(0, 0, e.Width, e.Height);
 
-            // Update camera viewport
+            // Update camera aspect ratio
             _camera.Resize(e.Width, e.Height);
         }
 
@@ -382,63 +408,122 @@ void main()
             // Update time
             _time += (float)e.Time;
 
-            // Get keyboard state
-            var keyboard = _window.KeyboardState;
-
-            // Check if Escape key is pressed to close the window
-            if (keyboard.IsKeyDown(Keys.Escape))
+            // Check for exit
+            if (_window.KeyboardState.IsKeyDown(Keys.Escape))
             {
                 _window.Close();
             }
 
-            // Handle camera movement with WASD
-            float cameraSpeed = 1.0f * (float)e.Time;
-            if (keyboard.IsKeyDown(Keys.W))
+            // Toggle mouse capture on mouse click
+            if (_window.MouseState.IsButtonPressed(MouseButton.Left))
             {
-                _camera.Move(new Vector2(0.0f, cameraSpeed));
-            }
-            if (keyboard.IsKeyDown(Keys.S))
-            {
-                _camera.Move(new Vector2(0.0f, -cameraSpeed));
-            }
-            if (keyboard.IsKeyDown(Keys.A))
-            {
-                _camera.Move(new Vector2(-cameraSpeed, 0.0f));
-            }
-            if (keyboard.IsKeyDown(Keys.D))
-            {
-                _camera.Move(new Vector2(cameraSpeed, 0.0f));
+                if (!_mouseCaptured)
+                {
+                    _mouseCaptured = true;
+                    _firstMouseMove = true;
+                    _window.CursorState = CursorState.Grabbed;
+                }
             }
 
-            // Handle camera rotation with Q/E
-            float rotationSpeed = 90.0f * (float)e.Time;
-            if (keyboard.IsKeyDown(Keys.Q))
+            // Release mouse with right click
+            if (_window.MouseState.IsButtonPressed(MouseButton.Right))
             {
-                _camera.Rotate(-rotationSpeed);
-            }
-            if (keyboard.IsKeyDown(Keys.E))
-            {
-                _camera.Rotate(rotationSpeed);
+                if (_mouseCaptured)
+                {
+                    _mouseCaptured = false;
+                    _window.CursorState = CursorState.Normal;
+                }
             }
 
-            // Update sprite animations
-            UpdateSprites((float)e.Time);
+            // Handle camera movement
+            HandleCameraMovement((float)e.Time);
+
+            // Handle cube movement
+            HandleCubeMovement((float)e.Time);
         }
 
         /// <summary>
-        /// Update sprites (animation, movement, etc.)
+        /// Handle camera movement based on keyboard input
         /// </summary>
-        private void UpdateSprites(float deltaTime)
+        private void HandleCameraMovement(float deltaTime)
         {
-            // Animate some sprites for demonstration
-            if (_sprites.Count >= 2)
-            {
-                // Rotate the crate
-                _sprites[0].Rotation += 45.0f * deltaTime;
+            // Movement speed
+            float speed = 3.0f * deltaTime;
 
-                // Make the face bob up and down
-                float offset = (float)Math.Sin(_time * 2.0f) * 0.2f;
-                _sprites[1].Position = new Vector2(0.7f, offset);
+            // Create a movement vector
+            Vector3 movement = Vector3.Zero;
+
+            // Check keyboard state
+            var keyboard = _window.KeyboardState;
+
+            // Forward/backward
+            if (keyboard.IsKeyDown(Keys.W))
+                movement.Z = 1.0f;
+            if (keyboard.IsKeyDown(Keys.S))
+                movement.Z = -1.0f;
+
+            // Left/right
+            if (keyboard.IsKeyDown(Keys.A))
+                movement.X = -1.0f;
+            if (keyboard.IsKeyDown(Keys.D))
+                movement.X = 1.0f;
+
+            // Up/down
+            if (keyboard.IsKeyDown(Keys.Space))
+                movement.Y = 1.0f;
+            if (keyboard.IsKeyDown(Keys.LeftShift))
+                movement.Y = -1.0f;
+
+            // Move the camera
+            if (movement != Vector3.Zero)
+                _camera.Move(movement, speed);
+        }
+
+        /// <summary>
+        /// Handle cube movement and rotation based on keyboard input
+        /// </summary>
+        private void HandleCubeMovement(float deltaTime)
+        {
+            // Check keyboard state
+            var keyboard = _window.KeyboardState;
+
+            // Rotation speed
+            float rotationSpeed = 100.0f * deltaTime;
+
+            // Cube rotation
+            if (keyboard.IsKeyDown(Keys.Up))
+            {
+                _solidCube.Rotation += new Vector3(rotationSpeed, 0, 0);
+                _wireframeCube.Rotation += new Vector3(rotationSpeed, 0, 0);
+            }
+            if (keyboard.IsKeyDown(Keys.Down))
+            {
+                _solidCube.Rotation += new Vector3(-rotationSpeed, 0, 0);
+                _wireframeCube.Rotation += new Vector3(-rotationSpeed, 0, 0);
+            }
+            if (keyboard.IsKeyDown(Keys.Left))
+            {
+                _solidCube.Rotation += new Vector3(0, -rotationSpeed, 0);
+                _wireframeCube.Rotation += new Vector3(0, -rotationSpeed, 0);
+            }
+            if (keyboard.IsKeyDown(Keys.Right))
+            {
+                _solidCube.Rotation += new Vector3(0, rotationSpeed, 0);
+                _wireframeCube.Rotation += new Vector3(0, rotationSpeed, 0);
+            }
+
+            // Cube scaling
+            if (keyboard.IsKeyDown(Keys.PageUp))
+            {
+                float scaleFactor = 1.0f + 0.5f * deltaTime;
+                _solidCube.Scale *= scaleFactor;
+                _wireframeCube.Scale *= scaleFactor;
+            }
+            if (keyboard.IsKeyDown(Keys.PageDown))
+            {
+                float scaleFactor = 1.0f - 0.5f * deltaTime;
+                _solidCube.Scale *= scaleFactor;
+                _wireframeCube.Scale *= scaleFactor;
             }
         }
 
@@ -447,63 +532,38 @@ void main()
         /// </summary>
         private void OnRenderFrame(FrameEventArgs e)
         {
-            // Clear the screen
-            GL.Clear(ClearBufferMask.ColorBufferBit);
+            // Clear the color and depth buffers
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-            // Draw sprites
-            RenderSprites();
-
-            // Swap buffers
-            _window.SwapBuffers();
-        }
-
-        /// <summary>
-        /// Render all sprites
-        /// </summary>
-        private void RenderSprites()
-        {
-            // Use the sprite shader
-            _spriteShader.Use();
-
-            // Set camera matrices
+            // Get camera matrices
             Matrix4 viewMatrix = _camera.GetViewMatrix();
             Matrix4 projectionMatrix = _camera.GetProjectionMatrix();
 
-            _spriteShader.SetMatrix4("uView", viewMatrix);
-            _spriteShader.SetMatrix4("uProjection", projectionMatrix);
+            // Set common shader uniforms
+            _modelShader.Use();
+            _modelShader.SetMatrix4("uView", viewMatrix);
+            _modelShader.SetMatrix4("uProjection", projectionMatrix);
 
-            // Bind the VAO
-            _quadVAO.Bind();
+            _wireframeShader.Use();
+            _wireframeShader.SetMatrix4("uView", viewMatrix);
+            _wireframeShader.SetMatrix4("uProjection", projectionMatrix);
 
-            // Draw each sprite
-            foreach (var sprite in _sprites)
+            // Draw grid
+            _grid.Render(_modelShader);
+
+            // Draw cube based on the current draw mode
+            if (_drawMode == DrawMode.Solid || _drawMode == DrawMode.Both)
             {
-                // Get the model matrix for this sprite
-                Matrix4 model = sprite.GetModelMatrix();
-
-                // Set the model matrix uniform
-                _spriteShader.SetMatrix4("uModel", model);
-
-                // Set texture uniform
-                _spriteShader.SetBool("uUseTexture", sprite.UseTexture);
-
-                if (sprite.UseTexture)
-                {
-                    // Bind the texture
-                    sprite.Texture.Use();
-                }
-                else
-                {
-                    // Bind the white texture as fallback
-                    _whiteTexture.Use();
-                }
-
-                // Draw the sprite quad
-                GL.DrawElements(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0);
+                _solidCube.Render(_modelShader);
             }
 
-            // Unbind VAO
-            _quadVAO.Unbind();
+            if (_drawMode == DrawMode.Wireframe || _drawMode == DrawMode.Both)
+            {
+                _wireframeCube.Render(_wireframeShader);
+            }
+
+            // Swap buffers
+            _window.SwapBuffers();
         }
 
         /// <summary>
@@ -515,24 +575,24 @@ void main()
         }
 
         /// <summary>
-        /// Clean up resources
+        /// Dispose of resources
         /// </summary>
         public void Dispose()
         {
             if (!_disposed)
             {
-                // Clean up shader resources
-                _spriteShader?.Dispose();
+                // Dispose of meshes
+                _solidCube?.Dispose();
+                _wireframeCube?.Dispose();
+                _grid?.Dispose();
 
-                // Clean up texture resources
-                _crateTexture?.Dispose();
-                _faceTexture?.Dispose();
-                _whiteTexture?.Dispose();
+                // Dispose of shaders
+                _modelShader?.Dispose();
+                _wireframeShader?.Dispose();
 
-                // Clean up OpenGL resources
-                _quadVBO?.Dispose();
-                _quadEBO?.Dispose();
-                _quadVAO?.Dispose();
+                // Dispose of textures
+                _containerTexture?.Dispose();
+                _defaultTexture?.Dispose();
 
                 _disposed = true;
                 GC.SuppressFinalize(this);

@@ -16,7 +16,7 @@
 		<None Update="Shaders\**">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<None Update="Textures\**">
+		<None Update="Assets\Textures\**">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
