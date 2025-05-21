@@ -40,3 +40,8 @@ C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\awesome_face.png
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\container.jpg
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\crate.png
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\container_specular.jpg
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\material.frag
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\material.vert
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\brick.jpg
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\brick_specular.png

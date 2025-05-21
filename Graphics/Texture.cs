@@ -6,7 +6,19 @@ using System.IO;
 namespace MiniRenderer.Graphics
 {
     /// <summary>
-    /// Wrapper class for OpenGL textures
+    /// Texture types for different material properties
+    /// </summary>
+    public enum TextureType
+    {
+        Diffuse,    // Color/diffuse texture
+        Specular,   // Specular map (shininess)
+        Normal,     // Normal map for detailed lighting
+        Height,     // Height/displacement map
+        Ambient     // Ambient occlusion map
+    }
+
+    /// <summary>
+    /// Wrapper class for OpenGL textures with enhanced features
     /// </summary>
     public class Texture : IDisposable
     {
@@ -17,29 +29,151 @@ namespace MiniRenderer.Graphics
         public int Width { get; private set; }
         public int Height { get; private set; }
 
+        // Texture properties
+        public TextureType Type { get; set; } = TextureType.Diffuse;
+        public string Path { get; private set; }
+
+        // Texture parameters
+        public TextureWrapMode WrapS { get; private set; } = TextureWrapMode.Repeat;
+        public TextureWrapMode WrapT { get; private set; } = TextureWrapMode.Repeat;
+        public TextureMinFilter MinFilter { get; private set; } = TextureMinFilter.LinearMipmapLinear;
+        public TextureMagFilter MagFilter { get; private set; } = TextureMagFilter.Linear;
+
         // Flag for resource disposal
         private bool _disposed = false;
 
         /// <summary>
-        /// Load a texture from a file
+        /// Load a texture from a file with default parameters
         /// </summary>
         /// <param name="path">Path to the image file</param>
         public Texture(string path)
         {
+            Path = path;
+
             // Generate a texture handle
             Handle = GL.GenTexture();
 
             // Bind the texture
             Bind();
 
-            // Set texture wrapping parameters
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
+            // Set default texture parameters
+            SetParameters();
 
-            // Set texture filtering parameters
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+            // Load the texture data
+            LoadFromFile(path);
+        }
 
+        /// <summary>
+        /// Load a texture from a file with custom parameters
+        /// </summary>
+        /// <param name="path">Path to the image file</param>
+        /// <param name="type">Type of texture (diffuse, specular, etc.)</param>
+        /// <param name="wrapS">S-axis wrapping mode</param>
+        /// <param name="wrapT">T-axis wrapping mode</param>
+        /// <param name="minFilter">Minification filter</param>
+        /// <param name="magFilter">Magnification filter</param>
+        public Texture(string path, TextureType type,
+                       TextureWrapMode wrapS = TextureWrapMode.Repeat,
+                       TextureWrapMode wrapT = TextureWrapMode.Repeat,
+                       TextureMinFilter minFilter = TextureMinFilter.LinearMipmapLinear,
+                       TextureMagFilter magFilter = TextureMagFilter.Linear)
+        {
+            Path = path;
+            Type = type;
+            WrapS = wrapS;
+            WrapT = wrapT;
+            MinFilter = minFilter;
+            MagFilter = magFilter;
+
+            // Generate a texture handle
+            Handle = GL.GenTexture();
+
+            // Bind the texture
+            Bind();
+
+            // Set custom texture parameters
+            SetParameters();
+
+            // Load the texture data
+            LoadFromFile(path);
+        }
+
+        /// <summary>
+        /// Create a solid color texture
+        /// </summary>
+        /// <param name="width">Width of the texture</param>
+        /// <param name="height">Height of the texture</param>
+        /// <param name="color">Color as RGBA bytes</param>
+        public Texture(int width, int height, byte[] color)
+        {
+            if (color.Length != 4)
+            {
+                throw new ArgumentException("Color must be 4 bytes (RGBA)", nameof(color));
+            }
+
+            Path = "generated_color";
+
+            // Generate a texture handle
+            Handle = GL.GenTexture();
+
+            // Bind the texture
+            Bind();
+
+            // Set default texture parameters
+            SetParameters();
+
+            // Set dimensions
+            Width = width;
+            Height = height;
+
+            // Create a solid color texture
+            byte[] data = new byte[width * height * 4];
+
+            for (int i = 0; i < width * height; i++)
+            {
+                data[i * 4 + 0] = color[0]; // R
+                data[i * 4 + 1] = color[1]; // G
+                data[i * 4 + 2] = color[2]; // B
+                data[i * 4 + 3] = color[3]; // A
+            }
+
+            // Upload the texture data
+            GL.TexImage2D(
+                TextureTarget.Texture2D,
+                0,
+                PixelInternalFormat.Rgba,
+                width,
+                height,
+                0,
+                PixelFormat.Rgba,
+                PixelType.UnsignedByte,
+                data
+            );
+
+            // Generate mipmaps
+            GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
+        }
+
+        /// <summary>
+        /// Set texture parameters based on the instance properties
+        /// </summary>
+        private void SetParameters()
+        {
+            // Set wrapping parameters
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)WrapS);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)WrapT);
+
+            // Set filtering parameters
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)MinFilter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)MagFilter);
+        }
+
+        /// <summary>
+        /// Load texture data from a file
+        /// </summary>
+        /// <param name="path">Path to the image file</param>
+        private void LoadFromFile(string path)
+        {
             // Tell StbImageSharp to flip the image when loading (OpenGL expects the origin to be bottom-left)
             StbImage.stbi_set_flip_vertically_on_load(1);
 
@@ -138,65 +272,6 @@ namespace MiniRenderer.Graphics
         }
 
         /// <summary>
-        /// Create a colored texture
-        /// </summary>
-        /// <param name="width">Width of the texture</param>
-        /// <param name="height">Height of the texture</param>
-        /// <param name="color">Color as RGBA bytes</param>
-        public Texture(int width, int height, byte[] color)
-        {
-            if (color.Length != 4)
-            {
-                throw new ArgumentException("Color must be 4 bytes (RGBA)", nameof(color));
-            }
-
-            // Generate a texture handle
-            Handle = GL.GenTexture();
-
-            // Bind the texture
-            Bind();
-
-            // Set texture wrapping parameters
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
-
-            // Set texture filtering parameters
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
-
-            // Set dimensions
-            Width = width;
-            Height = height;
-
-            // Create a solid color texture
-            byte[] data = new byte[width * height * 4];
-
-            for (int i = 0; i < width * height; i++)
-            {
-                data[i * 4 + 0] = color[0]; // R
-                data[i * 4 + 1] = color[1]; // G
-                data[i * 4 + 2] = color[2]; // B
-                data[i * 4 + 3] = color[3]; // A
-            }
-
-            // Upload the texture data
-            GL.TexImage2D(
-                TextureTarget.Texture2D,
-                0,
-                PixelInternalFormat.Rgba,
-                width,
-                height,
-                0,
-                PixelFormat.Rgba,
-                PixelType.UnsignedByte,
-                data
-            );
-
-            // Generate mipmaps
-            GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
-        }
-
-        /// <summary>
         /// Bind the texture to a texture unit
         /// </summary>
         /// <param name="unit">Texture unit to bind to</param>
@@ -253,6 +328,25 @@ namespace MiniRenderer.Graphics
         public static Texture CreateWhiteTexture()
         {
             return new Texture(1, 1, new byte[] { 255, 255, 255, 255 });
+        }
+
+        /// <summary>
+        /// Create a black 1x1 texture for use when no texture is needed
+        /// </summary>
+        /// <returns>A black texture</returns>
+        public static Texture CreateBlackTexture()
+        {
+            return new Texture(1, 1, new byte[] { 0, 0, 0, 255 });
+        }
+
+        /// <summary>
+        /// Create a normal map default blue 1x1 texture (pointing straight up)
+        /// </summary>
+        /// <returns>A default normal map texture</returns>
+        public static Texture CreateDefaultNormalMap()
+        {
+            // Standard normal map blue color (pointing straight up in tangent space)
+            return new Texture(1, 1, new byte[] { 128, 128, 255, 255 });
         }
     }
 }

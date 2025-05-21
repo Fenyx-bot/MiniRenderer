@@ -6,6 +6,7 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 using MiniRenderer.Graphics;
 using MiniRenderer.Camera;
 using System.IO;
+using System.Linq;
 
 namespace MiniRenderer.Engine
 {
@@ -20,17 +21,24 @@ namespace MiniRenderer.Engine
         private Camera3D _camera;
 
         // Shaders
-        private Shader _modelShader;
-        private Shader _wireframeShader;
+        private Shader _materialShader;
 
         // Meshes
-        private Mesh _solidCube;
-        private Mesh _wireframeCube;
+        private Mesh _cube1;
+        private Mesh _cube2;
         private Mesh _grid;
 
         // Textures
         private Texture _containerTexture;
+        private Texture _containerSpecularTexture;
+        private Texture _brickTexture;
+        private Texture _brickSpecularTexture;
         private Texture _defaultTexture;
+
+        // Materials
+        private Material _containerMaterial;
+        private Material _brickMaterial;
+        private Material _gridMaterial;
 
         // Mouse state
         private Vector2 _lastMousePosition;
@@ -40,9 +48,14 @@ namespace MiniRenderer.Engine
         // Animation
         private float _time = 0.0f;
 
-        // Drawing mode
-        private enum DrawMode { Solid, Wireframe, Both }
-        private DrawMode _drawMode = DrawMode.Both;
+        // Light properties
+        private Vector3 _lightPosition = new Vector3(1.2f, 1.0f, 2.0f);
+        private Vector3 _lightColor = new Vector3(1.0f, 1.0f, 1.0f);
+        private float _lightIntensity = 1.5f; // Increased intensity
+        private bool _lightRotate = true;
+
+        // Specular testing
+        private bool _specularEnabled = true;
 
         // Flag for proper resource disposal
         private bool _disposed = false;
@@ -75,11 +88,18 @@ namespace MiniRenderer.Engine
             // Enable depth testing
             GL.Enable(EnableCap.DepthTest);
 
+            // Enable alpha blending
+            GL.Enable(EnableCap.Blend);
+            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+
             // Set a background color (dark blue)
-            GL.ClearColor(0.0f, 0.1f, 0.2f, 1.0f);
+            GL.ClearColor(0.05f, 0.05f, 0.1f, 1.0f);
 
             // Create directory for shaders if it doesn't exist
             Directory.CreateDirectory("Shaders");
+
+            // Create textures directory
+            Directory.CreateDirectory("Assets/Textures");
 
             // Create shaders
             CreateShaders();
@@ -87,14 +107,26 @@ namespace MiniRenderer.Engine
             // Load textures
             LoadTextures();
 
+            // Create materials
+            CreateMaterials();
+
             // Create meshes
             CreateMeshes();
 
             // Create 3D camera
-            _camera = new Camera3D(new Vector3(0, 1, 3), _window.Size.X, _window.Size.Y);
+            CreateCamera();
 
             // Print controls
             PrintControls();
+        }
+
+        /// <summary>
+        /// Create 3D camera with good positioning for viewing specular effects
+        /// </summary>
+        private void CreateCamera()
+        {
+            // Position camera for better specular viewing (at an angle)
+            _camera = new Camera3D(new Vector3(3, 2, 4), _window.Size.X, _window.Size.Y);
         }
 
         /// <summary>
@@ -102,144 +134,185 @@ namespace MiniRenderer.Engine
         /// </summary>
         private void CreateShaders()
         {
-            // Create model shader files if they don't exist
-            string modelVertPath = "Shaders/model.vert";
-            string modelFragPath = "Shaders/model.frag";
+            string vertexShaderPath = "Shaders/material.vert";
+            string fragmentShaderPath = "Shaders/material.frag";
 
-            if (!File.Exists(modelVertPath))
+            if (!File.Exists(vertexShaderPath))
             {
-                File.WriteAllText(modelVertPath, @"#version 330 core
+                File.WriteAllText(vertexShaderPath, @"#version 330 core
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec2 aTexCoord;
 layout(location = 2) in vec3 aNormal;
 layout(location = 3) in vec4 aColor;
 
+// Output to fragment shader
 out vec2 texCoord;
 out vec3 normal;
+out vec3 fragPos;
 out vec4 vertexColor;
 
+// Transformation matrices
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
-uniform bool uUseTexture;
+
+// Texture tiling parameters
+uniform vec2 uTextureScale = vec2(1.0, 1.0);
+uniform vec2 uTextureOffset = vec2(0.0, 0.0);
 
 void main()
 {
+    // Apply the full MVP transformation
     gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
-    texCoord = aTexCoord;
+    
+    // Calculate world space fragment position (for lighting)
+    fragPos = vec3(uModel * vec4(aPosition, 1.0));
     
     // Transform the normal to world space
     normal = mat3(transpose(inverse(uModel))) * aNormal;
     
+    // Apply tiling to texture coordinates
+    texCoord = (aTexCoord * uTextureScale) + uTextureOffset;
+    
+    // Pass the vertex color to the fragment shader
     vertexColor = aColor;
 }");
             }
 
-            if (!File.Exists(modelFragPath))
+            if (!File.Exists(fragmentShaderPath))
             {
-                File.WriteAllText(modelFragPath, @"#version 330 core
+                File.WriteAllText(fragmentShaderPath, @"#version 330 core
+// Input from vertex shader
 in vec2 texCoord;
 in vec3 normal;
+in vec3 fragPos;
 in vec4 vertexColor;
 
+// Output color
 out vec4 FragColor;
 
-uniform sampler2D uTexture;
-uniform bool uUseTexture;
-uniform vec4 uColor;
+// Material structure
+struct Material {
+    bool useTextures;
+    vec4 diffuseColor;
+    float specularIntensity;
+    float shininess;
+    float ambientStrength;
+    float alpha;
+    bool hasSpecularMap;
+    sampler2D diffuseMap;
+    sampler2D specularMap;
+};
+
+// Light structure
+struct Light {
+    vec3 position;
+    vec3 direction;
+    vec3 color;
+    float intensity;
+    float constant;
+    float linear;
+    float quadratic;
+    bool isDirectional;
+};
+
+// Uniforms
+uniform Material material;
+uniform Light light;
+uniform vec3 viewPos; // Camera position for specular calculation
+uniform bool uSpecularEnabled; // Global specular toggle
 
 void main()
 {
     // Normalize the normal
     vec3 norm = normalize(normal);
     
-    // Basic lighting calculation
-    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3)); // Light direction
-    float diff = max(dot(norm, lightDir), 0.0); // Diffuse factor
+    // =====================
+    // Lighting calculations
+    // =====================
     
-    // Ambient lighting
-    float ambientStrength = 0.3;
-    vec3 ambient = ambientStrength * vec3(1.0);
+    vec3 lightDir;
+    float attenuation = 1.0;
     
-    // Combine ambient and diffuse
-    vec3 lighting = ambient + diff * vec3(0.7);
-    
-    if (uUseTexture)
-    {
-        // Sample the texture
-        vec4 texColor = texture(uTexture, texCoord);
+    if (light.isDirectional) {
+        // For directional lights, use the negative direction
+        lightDir = normalize(-light.direction);
+    } else {
+        // For point lights, calculate direction and attenuation
+        lightDir = normalize(light.position - fragPos);
         
-        // Apply lighting to the texture color
-        FragColor = vec4(texColor.rgb * lighting, texColor.a) * uColor;
+        // Calculate attenuation based on distance
+        float distance = length(light.position - fragPos);
+        attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
     }
-    else
-    {
-        // Apply lighting to the vertex color
-        FragColor = vec4(vertexColor.rgb * lighting, vertexColor.a) * uColor;
+    
+    // Calculate diffuse factor
+    float diff = max(dot(norm, lightDir), 0.0);
+    
+    // Calculate specular factor (only if enabled)
+    vec3 viewDir = normalize(viewPos - fragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = 0.0;
+    
+    if (uSpecularEnabled && diff > 0.0) {
+        // Use Blinn-Phong for better specular highlights
+        vec3 halfwayDir = normalize(lightDir + viewDir);
+        spec = pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
     }
+    
+    // Determine specular multiplier (from texture or uniform)
+    float specMultiplier = material.specularIntensity;
+    if (material.hasSpecularMap && material.useTextures && uSpecularEnabled) {
+        vec4 specularTexture = texture(material.specularMap, texCoord);
+        specMultiplier *= specularTexture.r; // Use red channel for specular intensity
+    }
+    
+    // =====================
+    // Final color calculation
+    // =====================
+    
+    // Calculate ambient component
+    vec3 ambient = material.ambientStrength * light.color;
+    
+    // Calculate diffuse component
+    vec3 diffuse = diff * light.color * light.intensity;
+    
+    // Calculate specular component (only if enabled)
+    vec3 specular = vec3(0.0);
+    if (uSpecularEnabled) {
+        specular = spec * specMultiplier * light.color * light.intensity;
+    }
+    
+    // Apply attenuation to all components
+    ambient *= attenuation;
+    diffuse *= attenuation;
+    specular *= attenuation;
+    
+    // Base color (from texture or material color)
+    vec4 baseColor;
+    if (material.useTextures) {
+        baseColor = texture(material.diffuseMap, texCoord) * vertexColor;
+    } else {
+        baseColor = material.diffuseColor * vertexColor;
+    }
+    
+    // Final color with lighting
+    vec3 result = (ambient + diffuse + specular) * baseColor.rgb;
+    
+    // Set final color with alpha
+    FragColor = vec4(result, baseColor.a * material.alpha);
 }");
             }
 
-            // Create wireframe shader files if they don't exist
-            string wireframeVertPath = "Shaders/wireframe.vert";
-            string wireframeFragPath = "Shaders/wireframe.frag";
-
-            if (!File.Exists(wireframeVertPath))
-            {
-                File.WriteAllText(wireframeVertPath, @"#version 330 core
-layout(location = 0) in vec3 aPosition;
-layout(location = 1) in vec4 aColor;
-
-out vec4 vertexColor;
-
-uniform mat4 uModel;
-uniform mat4 uView;
-uniform mat4 uProjection;
-uniform bool uUseTexture; // Added but unused to avoid warnings
-
-void main()
-{
-    gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
-    vertexColor = aColor;
-}");
-            }
-
-            if (!File.Exists(wireframeFragPath))
-            {
-                File.WriteAllText(wireframeFragPath, @"#version 330 core
-in vec4 vertexColor;
-
-out vec4 FragColor;
-
-uniform vec4 uColor;
-uniform bool uUseTexture; // Added but unused to avoid warnings
-uniform sampler2D uTexture; // Added but unused to avoid warnings
-
-void main()
-{
-    FragColor = vertexColor * uColor;
-}");
-            }
-
-            // Load the shaders
+            // Load the shader
             try
             {
-                _modelShader = Shader.FromFiles(modelVertPath, modelFragPath);
-                _wireframeShader = Shader.FromFiles(wireframeVertPath, wireframeFragPath);
-
-                // Set the texture unit for the model shader
-                _modelShader.Use();
-                _modelShader.SetInt("uTexture", 0);
-
-                // Set the texture unit for the wireframe shader to avoid warnings
-                _wireframeShader.Use();
-                _wireframeShader.SetInt("uTexture", 0);
-
-                Console.WriteLine("Shaders loaded successfully");
+                _materialShader = Shader.FromFiles(vertexShaderPath, fragmentShaderPath);
+                Console.WriteLine("Material shader loaded successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading shaders: {ex.Message}");
+                Console.WriteLine($"Error loading shader: {ex.Message}");
                 throw;
             }
         }
@@ -249,31 +322,169 @@ void main()
         /// </summary>
         private void LoadTextures()
         {
-            // Create the Textures directory if it doesn't exist
-            Directory.CreateDirectory("Assets/Textures");
-
-            // Create a default texture
+            // Create a default white texture
             _defaultTexture = Texture.CreateWhiteTexture();
 
-            // Try to load the container texture
+            // Print available textures for debugging
+            Console.WriteLine("Checking for available textures:");
+            string[] possibleDirectories = { "Assets/Textures/", "Textures/", "" };
+
+            foreach (string dir in possibleDirectories)
+            {
+                if (Directory.Exists(dir))
+                {
+                    Console.WriteLine($"  Directory '{dir}' exists, contains:");
+                    string[] files = Directory.GetFiles(dir, "*.*")
+                        .Where(file => file.ToLower().EndsWith(".jpg") ||
+                                      file.ToLower().EndsWith(".png") ||
+                                      file.ToLower().EndsWith(".bmp"))
+                        .ToArray();
+
+                    foreach (string file in files)
+                    {
+                        Console.WriteLine($"    - {file}");
+                    }
+                }
+            }
+
             try
             {
-                if (File.Exists("Assets/Textures/container.jpg"))
+                // Load CONTAINER textures (prioritize container.jpg over crate.png)
+                Console.WriteLine("\nLooking for CONTAINER textures:");
+                _containerTexture = LoadTextureWithPriority(new string[] {
+                    "container.jpg", "container.png"
+                }, new string[] {
+                    "crate.png", "crate.jpg"
+                }, "container/crate diffuse");
+
+                // Load CONTAINER SPECULAR map
+                Console.WriteLine("Looking for CONTAINER SPECULAR textures:");
+                _containerSpecularTexture = LoadTextureWithPriority(new string[] {
+                    "container_specular.jpg", "container_specular.png"
+                }, new string[] {
+                    "container_spec.jpg", "container_spec.png"
+                }, "container specular", allowNull: true);
+
+                // Load BRICK textures
+                Console.WriteLine("Looking for BRICK textures:");
+                _brickTexture = LoadTextureWithPriority(new string[] {
+                    "brick.jpg", "brick.png"
+                }, new string[] {
+                    "awesome_face.png", "face.png"
+                }, "brick diffuse");
+
+                // Load BRICK SPECULAR map  
+                Console.WriteLine("Looking for BRICK SPECULAR textures:");
+                var brickSpecularTexture = LoadTextureWithPriority(new string[] {
+                    "brick_specular.jpg", "brick_specular.png", "brick_spec.jpg"
+                }, new string[] {
+                }, "brick specular", allowNull: true);
+
+                // Store brick specular for material creation
+                if (brickSpecularTexture != null && brickSpecularTexture != _defaultTexture)
                 {
-                    _containerTexture = new Texture("Assets/Textures/container.jpg");
-                    Console.WriteLine("Container texture loaded successfully");
+                    _brickSpecularTexture = brickSpecularTexture;
                 }
-                else
-                {
-                    _containerTexture = _defaultTexture;
-                    Console.WriteLine("Texture 'container.jpg' not found, using default white texture");
-                }
+
+                Console.WriteLine();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error loading textures: {ex.Message}");
                 _containerTexture = _defaultTexture;
+                _brickTexture = _defaultTexture;
+                _containerSpecularTexture = null;
             }
+        }
+
+        /// <summary>
+        /// Load a texture with priority (tries primary names first, then fallback names)
+        /// </summary>
+        private Texture LoadTextureWithPriority(string[] primaryNames, string[] fallbackNames, string textureType, bool allowNull = false)
+        {
+            string[] directories = { "Assets/Textures/", "Textures/", "" };
+
+            // Try primary names first
+            foreach (string name in primaryNames)
+            {
+                foreach (string dir in directories)
+                {
+                    string path = Path.Combine(dir, name);
+                    if (File.Exists(path))
+                    {
+                        Console.WriteLine($"  ✓ Found {textureType}: {path} (PRIMARY)");
+                        return new Texture(path);
+                    }
+                }
+            }
+
+            // Try fallback names if primary not found
+            foreach (string name in fallbackNames)
+            {
+                foreach (string dir in directories)
+                {
+                    string path = Path.Combine(dir, name);
+                    if (File.Exists(path))
+                    {
+                        Console.WriteLine($"  ✓ Found {textureType}: {path} (FALLBACK)");
+                        return new Texture(path);
+                    }
+                }
+            }
+
+            // Not found
+            if (allowNull)
+            {
+                Console.WriteLine($"  ✗ {textureType} not found (optional)");
+                return null;
+            }
+            else
+            {
+                Console.WriteLine($"  ✗ {textureType} not found, using default white");
+                return _defaultTexture;
+            }
+        }
+
+        /// <summary>
+        /// Create materials
+        /// </summary>
+        private void CreateMaterials()
+        {
+            // Create container material with diffuse and specular maps (more dramatic settings)
+            _containerMaterial = new Material(_containerTexture, _containerSpecularTexture);
+            _containerMaterial.Shininess = 128.0f; // Higher shininess for tighter highlights
+            _containerMaterial.SpecularIntensity = 1.5f; // Much higher specular intensity
+            _containerMaterial.AmbientStrength = 0.05f; // Lower ambient to see specular better
+
+            // Create brick material with diffuse and optionally specular (more dramatic settings)
+            _brickMaterial = new Material(_brickTexture, _brickSpecularTexture);
+            _brickMaterial.Shininess = 32.0f; // Higher shininess
+            _brickMaterial.SpecularIntensity = 1.0f; // Higher specular intensity
+            _brickMaterial.AmbientStrength = 0.1f; // Lower ambient
+
+            // Create a simple colored material for the grid
+            _gridMaterial = Material.CreateColored(new Vector4(0.7f, 0.7f, 0.7f, 1.0f));
+            _gridMaterial.Shininess = 16.0f;
+            _gridMaterial.SpecularIntensity = 0.2f;
+            _gridMaterial.AmbientStrength = 0.3f;
+
+            // Debug output
+            Console.WriteLine("Materials created:");
+            Console.WriteLine($"  Container material:");
+            Console.WriteLine($"    - Diffuse texture: {(_containerTexture == _defaultTexture ? "DEFAULT WHITE" : _containerTexture.Path)}");
+            Console.WriteLine($"    - Specular texture: {(_containerSpecularTexture?.Path ?? "NONE")}");
+            Console.WriteLine($"    - Has specular map: {_containerSpecularTexture != null}");
+            Console.WriteLine($"    - Uses textures: {_containerMaterial.UseTextures}");
+            Console.WriteLine($"    - Shininess: {_containerMaterial.Shininess}");
+            Console.WriteLine($"    - Specular intensity: {_containerMaterial.SpecularIntensity}");
+            Console.WriteLine($"  Brick material:");
+            Console.WriteLine($"    - Diffuse texture: {(_brickTexture == _defaultTexture ? "DEFAULT WHITE" : _brickTexture.Path)}");
+            Console.WriteLine($"    - Specular texture: {(_brickSpecularTexture?.Path ?? "NONE")}");
+            Console.WriteLine($"    - Has specular map: {_brickSpecularTexture != null}");
+            Console.WriteLine($"    - Uses textures: {_brickMaterial.UseTextures}");
+            Console.WriteLine($"    - Shininess: {_brickMaterial.Shininess}");
+            Console.WriteLine($"    - Specular intensity: {_brickMaterial.SpecularIntensity}");
+            Console.WriteLine();
         }
 
         /// <summary>
@@ -281,19 +492,24 @@ void main()
         /// </summary>
         private void CreateMeshes()
         {
-            // Create a solid cube
-            _solidCube = Mesh.CreateCube(1.0f);
-            _solidCube.Texture = _containerTexture;
-            _solidCube.Position = new Vector3(0.0f, 0.0f, 0.0f);
+            // Create a cube with the container material
+            _cube1 = Mesh.CreateCube(1.0f);
+            _cube1.SetMaterial(_containerMaterial);
+            _cube1.Position = new Vector3(-1.5f, 0.5f, 0.0f);
+            _cube1.TextureScale = new Vector2(1.0f, 1.0f); // Initialize texture scale
 
-            // Create a wireframe cube
-            _wireframeCube = Mesh.CreateCube(1.02f, true);
-            _wireframeCube.Color = new Vector4(0.0f, 1.0f, 1.0f, 1.0f); // Cyan
-            _wireframeCube.Position = new Vector3(0.0f, 0.0f, 0.0f);
+            // Create a cube with the brick material
+            _cube2 = Mesh.CreateCube(1.0f);
+            _cube2.SetMaterial(_brickMaterial);
+            _cube2.Position = new Vector3(1.5f, 0.5f, 0.0f);
+            _cube2.TextureScale = new Vector2(1.0f, 1.0f); // Initialize texture scale
 
             // Create a grid
             _grid = Mesh.CreateGrid(10.0f, 10.0f, 10);
-            _grid.Color = new Vector4(0.5f, 0.5f, 0.5f, 1.0f); // Gray
+            _grid.SetMaterial(_gridMaterial);
+
+            // Set up texture tiling on the grid
+            _grid.TextureScale = new Vector2(3.0f, 3.0f);
         }
 
         /// <summary>
@@ -306,13 +522,30 @@ void main()
             Console.WriteLine("  Space/Shift - Move camera up/down");
             Console.WriteLine("  Mouse - Look around (click to capture/release mouse)");
             Console.WriteLine("  Mouse Wheel - Zoom in/out");
-            Console.WriteLine("  R - Reset camera");
-            Console.WriteLine("  T - Reset cube position and rotation");
-            Console.WriteLine("  M - Toggle drawing mode (solid/wireframe/both)");
-            Console.WriteLine("  P - Toggle projection mode (perspective/orthographic)");
-            Console.WriteLine("  Arrow Keys - Rotate cube");
-            Console.WriteLine("  Page Up/Down - Scale cube");
+            Console.WriteLine("  R - Reset camera position");
+            Console.WriteLine("  L - Toggle light rotation");
+            Console.WriteLine("");
+            Console.WriteLine("Material Controls:");
+            Console.WriteLine("  1/2 - Decrease/Increase specular intensity");
+            Console.WriteLine("  3/4 - Decrease/Increase shininess");
+            Console.WriteLine("  5/6 - Decrease/Increase ambient lighting");
+            Console.WriteLine("  7/8 - Decrease/Increase texture tiling (affects all objects)");
+            Console.WriteLine("");
+            Console.WriteLine("Specular Testing:");
+            Console.WriteLine("  G - Toggle specular on/off globally");
+            Console.WriteLine("  H - Set EXTREME specular values for testing");
+            Console.WriteLine("  N - Reset to normal specular values");
+            Console.WriteLine("");
+            Console.WriteLine("Object Controls:");
+            Console.WriteLine("  Arrow Keys - Move selected cube");
+            Console.WriteLine("  Tab - Toggle between cubes (hold to select cube 2)");
             Console.WriteLine("  Escape - Exit");
+            Console.WriteLine("");
+            Console.WriteLine($"Initial values:");
+            Console.WriteLine($"  Container material - Shininess: {_containerMaterial.Shininess:F0}, Specular: {_containerMaterial.SpecularIntensity:F1}");
+            Console.WriteLine($"  Brick material - Shininess: {_brickMaterial.Shininess:F0}, Specular: {_brickMaterial.SpecularIntensity:F1}");
+            Console.WriteLine($"  Texture tiling: {_cube1.TextureScale.X:F1}");
+            Console.WriteLine($"  Light intensity: {_lightIntensity:F1}");
         }
 
         /// <summary>
@@ -324,32 +557,98 @@ void main()
             {
                 case Keys.R:
                     // Reset camera
-                    _camera = new Camera3D(new Vector3(0, 1, 3), _window.Size.X, _window.Size.Y);
+                    CreateCamera();
                     Console.WriteLine("Camera reset");
                     break;
 
-                case Keys.T:
-                    // Reset cube position and rotation
-                    _solidCube.Position = Vector3.Zero;
-                    _solidCube.Rotation = Vector3.Zero;
-                    _solidCube.Scale = Vector3.One;
-
-                    _wireframeCube.Position = Vector3.Zero;
-                    _wireframeCube.Rotation = Vector3.Zero;
-                    _wireframeCube.Scale = Vector3.One;
-                    Console.WriteLine("Cube reset");
+                case Keys.L:
+                    // Toggle light rotation
+                    _lightRotate = !_lightRotate;
+                    Console.WriteLine($"Light rotation: {_lightRotate}");
                     break;
 
-                case Keys.M:
-                    // Toggle drawing mode
-                    _drawMode = (DrawMode)(((int)_drawMode + 1) % 3);
-                    Console.WriteLine($"Drawing mode: {_drawMode}");
+                case Keys.G:
+                    // Toggle specular globally
+                    _specularEnabled = !_specularEnabled;
+                    Console.WriteLine($"Specular lighting: {(_specularEnabled ? "ENABLED" : "DISABLED")}");
                     break;
 
-                case Keys.P:
-                    // Toggle projection mode
-                    _camera.ToggleProjectionMode();
-                    Console.WriteLine($"Projection mode: {_camera.Mode}");
+                case Keys.H:
+                    // Set very high specular for testing
+                    _containerMaterial.SpecularIntensity = 3.0f;
+                    _brickMaterial.SpecularIntensity = 3.0f;
+                    _containerMaterial.Shininess = 256.0f;
+                    _brickMaterial.Shininess = 256.0f;
+                    Console.WriteLine("Set EXTREME specular values for testing");
+                    break;
+
+                case Keys.N:
+                    // Reset to normal specular values
+                    _containerMaterial.SpecularIntensity = 1.5f;
+                    _brickMaterial.SpecularIntensity = 1.0f;
+                    _containerMaterial.Shininess = 128.0f;
+                    _brickMaterial.Shininess = 32.0f;
+                    Console.WriteLine("Reset to normal specular values");
+                    break;
+
+                case Keys.D1:
+                    // Decrease specular intensity
+                    _containerMaterial.SpecularIntensity = Math.Max(0.0f, _containerMaterial.SpecularIntensity - 0.2f);
+                    _brickMaterial.SpecularIntensity = Math.Max(0.0f, _brickMaterial.SpecularIntensity - 0.2f);
+                    Console.WriteLine($"Specular intensity: Container={_containerMaterial.SpecularIntensity:F1}, Brick={_brickMaterial.SpecularIntensity:F1}");
+                    break;
+
+                case Keys.D2:
+                    // Increase specular intensity
+                    _containerMaterial.SpecularIntensity = Math.Min(5.0f, _containerMaterial.SpecularIntensity + 0.2f);
+                    _brickMaterial.SpecularIntensity = Math.Min(5.0f, _brickMaterial.SpecularIntensity + 0.2f);
+                    Console.WriteLine($"Specular intensity: Container={_containerMaterial.SpecularIntensity:F1}, Brick={_brickMaterial.SpecularIntensity:F1}");
+                    break;
+
+                case Keys.D3:
+                    // Decrease shininess
+                    _containerMaterial.Shininess = Math.Max(1.0f, _containerMaterial.Shininess - 16.0f);
+                    _brickMaterial.Shininess = Math.Max(1.0f, _brickMaterial.Shininess - 8.0f);
+                    Console.WriteLine($"Shininess: Container={_containerMaterial.Shininess:F0}, Brick={_brickMaterial.Shininess:F0}");
+                    break;
+
+                case Keys.D4:
+                    // Increase shininess
+                    _containerMaterial.Shininess = Math.Min(512.0f, _containerMaterial.Shininess + 16.0f);
+                    _brickMaterial.Shininess = Math.Min(512.0f, _brickMaterial.Shininess + 8.0f);
+                    Console.WriteLine($"Shininess: Container={_containerMaterial.Shininess:F0}, Brick={_brickMaterial.Shininess:F0}");
+                    break;
+
+                case Keys.D5:
+                    // Decrease ambient lighting
+                    _containerMaterial.AmbientStrength = Math.Max(0.0f, _containerMaterial.AmbientStrength - 0.05f);
+                    _brickMaterial.AmbientStrength = Math.Max(0.0f, _brickMaterial.AmbientStrength - 0.05f);
+                    _gridMaterial.AmbientStrength = Math.Max(0.0f, _gridMaterial.AmbientStrength - 0.05f);
+                    Console.WriteLine($"Ambient: Container={_containerMaterial.AmbientStrength:F2}, Brick={_brickMaterial.AmbientStrength:F2}");
+                    break;
+
+                case Keys.D6:
+                    // Increase ambient lighting
+                    _containerMaterial.AmbientStrength = Math.Min(1.0f, _containerMaterial.AmbientStrength + 0.05f);
+                    _brickMaterial.AmbientStrength = Math.Min(1.0f, _brickMaterial.AmbientStrength + 0.05f);
+                    _gridMaterial.AmbientStrength = Math.Min(1.0f, _gridMaterial.AmbientStrength + 0.05f);
+                    Console.WriteLine($"Ambient: Container={_containerMaterial.AmbientStrength:F2}, Brick={_brickMaterial.AmbientStrength:F2}");
+                    break;
+
+                case Keys.D7:
+                    // Decrease texture tiling
+                    _cube1.TextureScale = new Vector2(Math.Max(0.1f, _cube1.TextureScale.X - 0.5f));
+                    _cube2.TextureScale = new Vector2(Math.Max(0.1f, _cube2.TextureScale.X - 0.5f));
+                    _grid.TextureScale = new Vector2(Math.Max(0.1f, _grid.TextureScale.X - 0.5f));
+                    Console.WriteLine($"Texture tiling: {_cube1.TextureScale.X:F1}");
+                    break;
+
+                case Keys.D8:
+                    // Increase texture tiling
+                    _cube1.TextureScale = new Vector2(Math.Min(10.0f, _cube1.TextureScale.X + 0.5f));
+                    _cube2.TextureScale = new Vector2(Math.Min(10.0f, _cube2.TextureScale.X + 0.5f));
+                    _grid.TextureScale = new Vector2(Math.Min(10.0f, _grid.TextureScale.X + 0.5f));
+                    Console.WriteLine($"Texture tiling: {_cube1.TextureScale.X:F1}");
                     break;
             }
         }
@@ -438,8 +737,11 @@ void main()
             // Handle camera movement
             HandleCameraMovement((float)e.Time);
 
-            // Handle cube movement
-            HandleCubeMovement((float)e.Time);
+            // Update cubes
+            UpdateCubes((float)e.Time);
+
+            // Update light position
+            UpdateLight((float)e.Time);
         }
 
         /// <summary>
@@ -480,50 +782,47 @@ void main()
         }
 
         /// <summary>
-        /// Handle cube movement and rotation based on keyboard input
+        /// Update cube positions and rotations
         /// </summary>
-        private void HandleCubeMovement(float deltaTime)
+        private void UpdateCubes(float deltaTime)
         {
-            // Check keyboard state
+            // Rotate the cubes
+            _cube1.Rotation += new Vector3(0, 15 * deltaTime, 0);
+            _cube2.Rotation += new Vector3(15 * deltaTime, 0, 0);
+
+            // Handle keyboard movement of cubes
             var keyboard = _window.KeyboardState;
+            bool isTabDown = keyboard.IsKeyDown(Keys.Tab);
 
-            // Rotation speed
-            float rotationSpeed = 100.0f * deltaTime;
+            // Determine which cube to move
+            Mesh activeCube = isTabDown ? _cube2 : _cube1;
 
-            // Cube rotation
+            // Movement amount
+            float moveAmount = 2.0f * deltaTime;
+
+            // Handle arrow keys
             if (keyboard.IsKeyDown(Keys.Up))
-            {
-                _solidCube.Rotation += new Vector3(rotationSpeed, 0, 0);
-                _wireframeCube.Rotation += new Vector3(rotationSpeed, 0, 0);
-            }
+                activeCube.Position += new Vector3(0, moveAmount, 0);
             if (keyboard.IsKeyDown(Keys.Down))
-            {
-                _solidCube.Rotation += new Vector3(-rotationSpeed, 0, 0);
-                _wireframeCube.Rotation += new Vector3(-rotationSpeed, 0, 0);
-            }
+                activeCube.Position -= new Vector3(0, moveAmount, 0);
             if (keyboard.IsKeyDown(Keys.Left))
-            {
-                _solidCube.Rotation += new Vector3(0, -rotationSpeed, 0);
-                _wireframeCube.Rotation += new Vector3(0, -rotationSpeed, 0);
-            }
+                activeCube.Position -= new Vector3(moveAmount, 0, 0);
             if (keyboard.IsKeyDown(Keys.Right))
-            {
-                _solidCube.Rotation += new Vector3(0, rotationSpeed, 0);
-                _wireframeCube.Rotation += new Vector3(0, rotationSpeed, 0);
-            }
+                activeCube.Position += new Vector3(moveAmount, 0, 0);
+        }
 
-            // Cube scaling
-            if (keyboard.IsKeyDown(Keys.PageUp))
+        /// <summary>
+        /// Update the light position
+        /// </summary>
+        private void UpdateLight(float deltaTime)
+        {
+            if (_lightRotate)
             {
-                float scaleFactor = 1.0f + 0.5f * deltaTime;
-                _solidCube.Scale *= scaleFactor;
-                _wireframeCube.Scale *= scaleFactor;
-            }
-            if (keyboard.IsKeyDown(Keys.PageDown))
-            {
-                float scaleFactor = 1.0f - 0.5f * deltaTime;
-                _solidCube.Scale *= scaleFactor;
-                _wireframeCube.Scale *= scaleFactor;
+                // Rotate the light around the scene
+                float radius = 3.0f;
+                float angle = _time * 0.5f;
+                _lightPosition.X = (float)Math.Sin(angle) * radius;
+                _lightPosition.Z = (float)Math.Cos(angle) * radius;
             }
         }
 
@@ -540,27 +839,29 @@ void main()
             Matrix4 projectionMatrix = _camera.GetProjectionMatrix();
 
             // Set common shader uniforms
-            _modelShader.Use();
-            _modelShader.SetMatrix4("uView", viewMatrix);
-            _modelShader.SetMatrix4("uProjection", projectionMatrix);
+            _materialShader.Use();
+            _materialShader.SetMatrix4("uView", viewMatrix);
+            _materialShader.SetMatrix4("uProjection", projectionMatrix);
 
-            _wireframeShader.Use();
-            _wireframeShader.SetMatrix4("uView", viewMatrix);
-            _wireframeShader.SetMatrix4("uProjection", projectionMatrix);
+            // Set light properties (with specular toggle)
+            _materialShader.SetVector3("light.position", _lightPosition);
+            _materialShader.SetVector3("light.color", _lightColor);
+            _materialShader.SetFloat("light.intensity", _lightIntensity);
+            _materialShader.SetFloat("light.constant", 1.0f);
+            _materialShader.SetFloat("light.linear", 0.045f); // Reduced for less attenuation
+            _materialShader.SetFloat("light.quadratic", 0.0075f); // Reduced for less attenuation
+            _materialShader.SetBool("light.isDirectional", false);
 
-            // Draw grid
-            _grid.Render(_modelShader);
+            // Global specular toggle
+            _materialShader.SetBool("uSpecularEnabled", _specularEnabled);
 
-            // Draw cube based on the current draw mode
-            if (_drawMode == DrawMode.Solid || _drawMode == DrawMode.Both)
-            {
-                _solidCube.Render(_modelShader);
-            }
+            // Set camera position for specular calculations
+            _materialShader.SetVector3("viewPos", _camera.Position);
 
-            if (_drawMode == DrawMode.Wireframe || _drawMode == DrawMode.Both)
-            {
-                _wireframeCube.Render(_wireframeShader);
-            }
+            // Draw objects
+            _grid.Render(_materialShader);
+            _cube1.Render(_materialShader);
+            _cube2.Render(_materialShader);
 
             // Swap buffers
             _window.SwapBuffers();
@@ -582,17 +883,21 @@ void main()
             if (!_disposed)
             {
                 // Dispose of meshes
-                _solidCube?.Dispose();
-                _wireframeCube?.Dispose();
+                _cube1?.Dispose();
+                _cube2?.Dispose();
                 _grid?.Dispose();
 
                 // Dispose of shaders
-                _modelShader?.Dispose();
-                _wireframeShader?.Dispose();
+                _materialShader?.Dispose();
 
                 // Dispose of textures
                 _containerTexture?.Dispose();
+                _containerSpecularTexture?.Dispose();
+                _brickTexture?.Dispose();
+                _brickSpecularTexture?.Dispose();
                 _defaultTexture?.Dispose();
+
+                // Note: materials are disposed by meshes if owned
 
                 _disposed = true;
                 GC.SuppressFinalize(this);

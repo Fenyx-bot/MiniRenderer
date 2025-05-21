@@ -5,7 +5,7 @@ using System;
 namespace MiniRenderer.Graphics
 {
     /// <summary>
-    /// Represents a 3D mesh with vertices, indices, and transformation properties
+    /// Represents a 3D mesh with vertices, indices, materials, and transformation properties
     /// </summary>
     public class Mesh : IDisposable
     {
@@ -26,15 +26,16 @@ namespace MiniRenderer.Graphics
         public Vector3 Rotation { get; set; }
         public Vector3 Scale { get; set; }
 
-        // Color
-        public Vector4 Color { get; set; }
+        // Material properties
+        public Material Material { get; set; }
 
-        // Texture
-        public Texture Texture { get; set; }
-        public bool UseTexture => Texture != null;
+        // Texture coordinates scaling for tiling textures
+        public Vector2 TextureScale { get; set; } = Vector2.One;
+        public Vector2 TextureOffset { get; set; } = Vector2.Zero;
 
         // Flag for proper resource disposal
         private bool _disposed = false;
+        private bool _ownsMaterial = false;
 
         /// <summary>
         /// Create a new mesh from vertex and index data
@@ -62,8 +63,9 @@ namespace MiniRenderer.Graphics
             Rotation = Vector3.Zero;
             Scale = Vector3.One;
 
-            // Default color
-            Color = new Vector4(1.0f);
+            // Default material - white diffuse
+            Material = new Material();
+            _ownsMaterial = true;
 
             // Create VAO
             _vao = new VertexArray();
@@ -122,6 +124,23 @@ namespace MiniRenderer.Graphics
         }
 
         /// <summary>
+        /// Set the material for this mesh
+        /// </summary>
+        /// <param name="material">The material to use</param>
+        /// <param name="ownsMaterial">Whether this mesh owns and should dispose the material</param>
+        public void SetMaterial(Material material, bool ownsMaterial = false)
+        {
+            // Clean up existing material if we own it
+            if (_ownsMaterial)
+            {
+                Material?.Dispose();
+            }
+
+            Material = material;
+            _ownsMaterial = ownsMaterial;
+        }
+
+        /// <summary>
         /// Create a cube mesh
         /// </summary>
         /// <param name="size">Size of the cube</param>
@@ -168,19 +187,12 @@ namespace MiniRenderer.Graphics
             // Set model matrix
             shader.SetMatrix4("uModel", GetModelMatrix());
 
-            // Set color
-            shader.SetVector4("uColor", Color);
+            // Set texture tiling parameters
+            shader.SetVector2("uTextureScale", TextureScale);
+            shader.SetVector2("uTextureOffset", TextureOffset);
 
-            // Set texture
-            if (UseTexture)
-            {
-                Texture.Use();
-                shader.SetBool("uUseTexture", true);
-            }
-            else
-            {
-                shader.SetBool("uUseTexture", false);
-            }
+            // Apply material (this sets up textures and material properties)
+            Material?.Apply(shader);
 
             // Bind VAO and draw
             _vao.Bind();
@@ -215,6 +227,13 @@ namespace MiniRenderer.Graphics
                 _vao?.Dispose();
                 _vbo?.Dispose();
                 _ebo?.Dispose();
+
+                // Dispose of material if we own it
+                if (_ownsMaterial)
+                {
+                    Material?.Dispose();
+                }
+
                 _disposed = true;
                 GC.SuppressFinalize(this);
             }

@@ -3,23 +3,22 @@
 namespace MiniRenderer
 {
     /// <summary>
-    /// Module 4: Expanding to 3D Rendering
+    /// Module 5: Textures & Materials
     /// 
     /// In this module, we'll learn about:
-    /// 1. Introduction to 3D space (Adding a Z-Axis)
-    /// 2. Rendering a 3D Cube (Wireframe & Solid)
-    /// 3. Switching Between Orthographic and Perspective Projection
-    /// 4. Applying Transformations in 3D (Translation, Rotation, Scaling)
-    /// 5. Understanding the Model-View-Projection (MVP) Matrix
+    /// 1. Loading and Applying Textures to Objects
+    /// 2. Introduction to UV Mapping and Texture Coordinates
+    /// 3. Applying Textures to Both 2D and 3D Shapes (e.g., a Textured Cube)
+    /// 4. Creating a Simple Material System
     /// </summary>
     class Program
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Module 4: Expanding to 3D Rendering");
+            Console.WriteLine("Module 5: Textures & Materials");
 
             // Create a window
-            var window = Window.Create(800, 600, "Module 4 - 3D Rendering");
+            var window = Window.Create(800, 600, "Module 5 - Textures & Materials");
 
             // Create and run the engine
             using (var engine = new Engine.Engine(window))
