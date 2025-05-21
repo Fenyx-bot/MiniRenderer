@@ -3,6 +3,8 @@ using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
 using MiniRenderer.Graphics;
+using System.IO;
+using OpenTK.Mathematics;
 
 namespace MiniRenderer.Engine
 {
@@ -16,6 +18,14 @@ namespace MiniRenderer.Engine
         // OpenGL objects
         private VertexArray _vertexArray;
         private VertexBuffer _vertexBuffer;
+
+        // Shaders
+        private Shader _basicShader;
+        private Shader _uniformShader;
+        private bool _useBasicShader = true;
+
+        // Timing
+        private float _time = 0.0f;
 
         // Flag for proper resource disposal
         private bool _disposed = false;
@@ -33,6 +43,7 @@ namespace MiniRenderer.Engine
             _window.Resize += OnResize;
             _window.UpdateFrame += OnUpdateFrame;
             _window.RenderFrame += OnRenderFrame;
+            _window.KeyDown += OnKeyDown;
         }
 
         /// <summary>
@@ -47,6 +58,12 @@ namespace MiniRenderer.Engine
 
             // Create our objects
             CreateTriangle();
+            CreateShaders();
+
+            // Print controls
+            Console.WriteLine("Controls:");
+            Console.WriteLine("  Space - Toggle between basic and uniform shader");
+            Console.WriteLine("  Escape - Exit");
         }
 
         /// <summary>
@@ -58,12 +75,12 @@ namespace MiniRenderer.Engine
             _vertexArray = new VertexArray();
             _vertexArray.Bind();
 
-            // Triangle vertex data with fixed colors embedded
+            // Triangle vertex data with position and color
             // Format: X, Y, R, G, B
             float[] vertices = {
-                 0.0f,  0.5f, 1.0f, 1.0f, 1.0f,  // top vertex (red)
-                -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  // bottom-left vertex (green)
-                 0.5f, -0.5f, 0.0f, 0.0f, 0.0f   // bottom-right vertex (blue)
+                 0.0f,  0.5f, 1.0f, 0.0f, 0.0f,  // top vertex (red)
+                -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  // bottom-left vertex (green)
+                 0.5f, -0.5f, 0.0f, 0.0f, 1.0f   // bottom-right vertex (blue)
             };
 
             // Create a Vertex Buffer Object (VBO)
@@ -72,8 +89,6 @@ namespace MiniRenderer.Engine
 
             // Upload the vertex data to the GPU
             _vertexBuffer.SetData(vertices);
-
-            // Tell OpenGL how to interpret the vertex data
 
             // Position attribute (2 floats) at location 0
             GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 5 * sizeof(float), 0);
@@ -85,6 +100,100 @@ namespace MiniRenderer.Engine
 
             // Unbind VAO to prevent accidental modification
             _vertexArray.Unbind();
+        }
+
+        /// <summary>
+        /// Create and load the shaders
+        /// </summary>
+        private void CreateShaders()
+        {
+            // Create shader directory if it doesn't exist
+            Directory.CreateDirectory("Shaders");
+
+            // Check if shader files exist, if not, create them
+            string vertPath = "Shaders/basic.vert";
+            string fragPath = "Shaders/basic.frag";
+            string uniformPath = "Shaders/uniform.frag";
+
+            if (!File.Exists(vertPath))
+            {
+                File.WriteAllText(vertPath, @"#version 330 core
+layout(location = 0) in vec2 aPosition;
+layout(location = 1) in vec3 aColor;
+
+out vec3 vertexColor;
+
+void main()
+{
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+    vertexColor = aColor;
+}");
+            }
+
+            if (!File.Exists(fragPath))
+            {
+                File.WriteAllText(fragPath, @"#version 330 core
+in vec3 vertexColor;
+out vec4 FragColor;
+
+void main()
+{
+    FragColor = vec4(vertexColor, 1.0);
+}");
+            }
+
+            if (!File.Exists(uniformPath))
+            {
+                File.WriteAllText(uniformPath, @"#version 330 core
+in vec3 vertexColor;
+
+uniform float uTime;
+uniform vec3 uTint;
+
+out vec4 FragColor;
+
+void main()
+{
+    // Animate the colors based on time
+    vec3 color = vertexColor;
+    color.r = color.r * (sin(uTime) * 0.5 + 0.5);
+    color.g = color.g * (sin(uTime + 2.0) * 0.5 + 0.5);
+    color.b = color.b * (sin(uTime + 4.0) * 0.5 + 0.5);
+    
+    // Apply the tint
+    color = color * uTint;
+    
+    // Output final color
+    FragColor = vec4(color, 1.0);
+}");
+            }
+
+            try
+            {
+                // Load the shaders
+                _basicShader = Shader.FromFiles(vertPath, fragPath);
+                _uniformShader = Shader.FromFiles(vertPath, uniformPath);
+
+                Console.WriteLine("Shaders loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading shaders: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Handle key down events
+        /// </summary>
+        private void OnKeyDown(KeyboardKeyEventArgs e)
+        {
+            if (e.Key == Keys.Space)
+            {
+                // Toggle shader when space is pressed
+                _useBasicShader = !_useBasicShader;
+                Console.WriteLine($"Using {(_useBasicShader ? "basic" : "uniform")} shader");
+            }
         }
 
         /// <summary>
@@ -101,8 +210,10 @@ namespace MiniRenderer.Engine
         /// </summary>
         private void OnUpdateFrame(FrameEventArgs e)
         {
-            // Here we would update any game logic
-            // For now, just check if Escape key is pressed to close the window
+            // Update time
+            _time += (float)e.Time;
+
+            // Check if Escape key is pressed to close the window
             var keyboard = _window.KeyboardState;
             if (keyboard.IsKeyDown(Keys.Escape))
             {
@@ -130,15 +241,22 @@ namespace MiniRenderer.Engine
         /// </summary>
         private void DrawTriangle()
         {
+            // Use the appropriate shader
+            if (_useBasicShader)
+            {
+                _basicShader.Use();
+            }
+            else
+            {
+                _uniformShader.Use();
+
+                // Set uniform values
+                _uniformShader.SetFloat("uTime", _time);
+                _uniformShader.SetVector3("uTint", new Vector3(1.0f, 1.0f, 1.0f)); // White tint (no change)
+            }
+
             // Bind the VAO
             _vertexArray.Bind();
-
-            // In Module 1, we use the fixed-function pipeline
-            // This means we don't write our own shaders yet
-            // OpenGL 3.3+ requires shaders, so we use a simple built-in shader
-
-            // The fixed function pipeline (OpenGL 1.x) is deprecated,
-            // but we're simulating it with this very basic shader functionality
 
             // Draw the triangle
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
@@ -162,6 +280,10 @@ namespace MiniRenderer.Engine
         {
             if (!_disposed)
             {
+                // Clean up shader resources
+                _basicShader?.Dispose();
+                _uniformShader?.Dispose();
+
                 // Clean up OpenGL resources
                 _vertexBuffer?.Dispose();
                 _vertexArray?.Dispose();

@@ -1,23 +1,22 @@
 ﻿using MiniRenderer.Engine;
-using OpenTK.Windowing.GraphicsLibraryFramework;
 
 namespace MiniRenderer
 {
-    // Module 1: Getting Started with OpenTK
+    // Module 2: Understanding the Graphics Pipeline
     // In this module, we'll learn how to:
-    // 1. Create a window and handle events
-    // 2. Set up a basic OpenGL context
-    // 3. Create and use Vertex Buffer Objects (VBOs) and Vertex Array Objects (VAOs)
-    // 4. Draw a simple triangle using static colors
+    // 1. Understand the rendering pipeline
+    // 2. Create and use GLSL shaders (vertex and fragment)
+    // 3. Work with shader uniforms
+    // 4. Create more advanced visual effects with shaders
 
     class Program
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Module 1: Getting Started with OpenTK");
+            Console.WriteLine("Module 2: Understanding the Graphics Pipeline");
 
             // Create a window
-            var window = Engine.Window.Create(800, 600, "Module 1 - Triangle");
+            var window = Window.Create(800, 600, "Module 2 - Shaders");
 
             // Create and run the engine
             using (var engine = new Engine.Engine(window))

@@ -1,3 +1,6 @@
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\basic.frag
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\basic.vert
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\uniform.frag
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Renderer.exe
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Renderer.deps.json
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Renderer.runtimeconfig.json
@@ -23,6 +26,7 @@ C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.AssemblyInfoInputs.cache
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.AssemblyInfo.cs
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.csproj.CoreCompileInputs.cache
+C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.sourcelink.json
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.csproj.Up2Date
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\Renderer.dll
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\obj\Debug\net8.0\refint\Renderer.dll
