@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "ctHU/fx54bo=",
+  "dgSpecHash": "IMoHy2FSmHA=",
   "success": true,
   "projectFilePath": "C:\\Users\\FenyxPC\\Desktop\\Code\\MiniRenderer\\ConsoleApp1\\Renderer.csproj",
   "expectedPackageFiles": [
@@ -15,6 +15,7 @@
     "C:\\Users\\FenyxPC\\.nuget\\packages\\opentk.windowing.common\\4.8.2\\opentk.windowing.common.4.8.2.nupkg.sha512",
     "C:\\Users\\FenyxPC\\.nuget\\packages\\opentk.windowing.desktop\\4.8.2\\opentk.windowing.desktop.4.8.2.nupkg.sha512",
     "C:\\Users\\FenyxPC\\.nuget\\packages\\opentk.windowing.graphicslibraryframework\\4.8.2\\opentk.windowing.graphicslibraryframework.4.8.2.nupkg.sha512",
+    "C:\\Users\\FenyxPC\\.nuget\\packages\\stbimagesharp\\2.27.13\\stbimagesharp.2.27.13.nupkg.sha512",
     "C:\\Users\\FenyxPC\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\5.0.0\\system.runtime.compilerservices.unsafe.5.0.0.nupkg.sha512"
   ],
   "logs": []
