@@ -240,28 +240,34 @@ namespace MiniRenderer.Graphics
         /// <param name="shader">Shader to use for rendering</param>
         public void Render(Shader shader)
         {
-            // Set model transformation matrix
-            shader.SetMatrix4("uModel", GetModelMatrix());
+            if (Mesh != null)
+            {
+                // Synchronize Model transformations with Mesh transformations
+                Mesh.Position = Position;
+                Mesh.Rotation = Rotation;
+                Mesh.Scale = Scale;
 
-            // Render the mesh
-            Mesh?.Render(shader);
+                // Let the mesh handle rendering with its own matrix calculation
+                Mesh.Render(shader);
+            }
         }
 
         /// <summary>
-        /// Get the model transformation matrix
+        /// Get the model transformation matrix - CORRECTED VERSION
         /// </summary>
         /// <returns>The model transformation matrix</returns>
         public Matrix4 GetModelMatrix()
         {
             // Create transformation matrices
-            Matrix4 translation = Matrix4.CreateTranslation(Position);
-            Matrix4 rotationX = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(Rotation.X));
-            Matrix4 rotationY = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(Rotation.Y));
-            Matrix4 rotationZ = Matrix4.CreateRotationZ(MathHelper.DegreesToRadians(Rotation.Z));
-            Matrix4 scale = Matrix4.CreateScale(Scale);
+            Matrix4 scaleMatrix = Matrix4.CreateScale(Scale);
+            Matrix4 rotationXMatrix = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(Rotation.X));
+            Matrix4 rotationYMatrix = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(Rotation.Y));
+            Matrix4 rotationZMatrix = Matrix4.CreateRotationZ(MathHelper.DegreesToRadians(Rotation.Z));
+            Matrix4 translationMatrix = Matrix4.CreateTranslation(Position);
 
-            // Combine transformations (scale first, then rotate, then translate)
-            return scale * rotationX * rotationY * rotationZ * translation;
+            // CORRECT ORDER: Scale first, then rotate, then translate
+            // Matrix multiplication is left-to-right for the transformation order
+            return translationMatrix * rotationYMatrix * rotationXMatrix * rotationZMatrix * scaleMatrix;
         }
 
         /// <summary>

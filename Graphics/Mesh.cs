@@ -201,20 +201,21 @@ namespace MiniRenderer.Graphics
         }
 
         /// <summary>
-        /// Get the model matrix based on position, rotation, and scale
+        /// Get the model matrix based on position, rotation, and scale - CORRECTED VERSION
         /// </summary>
         /// <returns>Model matrix</returns>
         public Matrix4 GetModelMatrix()
         {
             // Create transformation matrices
-            Matrix4 translation = Matrix4.CreateTranslation(Position);
-            Matrix4 rotationX = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(Rotation.X));
-            Matrix4 rotationY = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(Rotation.Y));
-            Matrix4 rotationZ = Matrix4.CreateRotationZ(MathHelper.DegreesToRadians(Rotation.Z));
-            Matrix4 scale = Matrix4.CreateScale(Scale);
+            Matrix4 translationMatrix = Matrix4.CreateTranslation(Position);
+            Matrix4 rotationXMatrix = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(Rotation.X));
+            Matrix4 rotationYMatrix = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(Rotation.Y));
+            Matrix4 rotationZMatrix = Matrix4.CreateRotationZ(MathHelper.DegreesToRadians(Rotation.Z));
+            Matrix4 scaleMatrix = Matrix4.CreateScale(Scale);
 
-            // Combine transformations (scale first, then rotate, then translate)
-            return scale * rotationX * rotationY * rotationZ * translation;
+            // CORRECT order: Translate * Rotate * Scale
+            // This applies Scale first, then Rotation, then Translation
+            return translationMatrix * rotationYMatrix * rotationXMatrix * rotationZMatrix * scaleMatrix;
         }
 
         /// <summary>

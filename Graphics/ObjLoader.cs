@@ -103,6 +103,7 @@ namespace MiniRenderer.Graphics
                             {
                                 float u = ParseFloat(parts[1]);
                                 float v = ParseFloat(parts[2]);
+                                // DON'T flip V coordinate here - let the texture loader handle it
                                 objData.TextureCoords.Add(new Vector2(u, v));
                             }
                             break;
@@ -290,18 +291,28 @@ namespace MiniRenderer.Graphics
                 vertices.Add(0.0f);
             }
 
-            // Texture coordinates (optional)
+            // Texture coordinates (optional) - FIXED: Better UV handling
             if (faceVertex.TextureIndex >= 0 && faceVertex.TextureIndex < objData.TextureCoords.Count)
             {
                 var texCoord = objData.TextureCoords[faceVertex.TextureIndex];
                 vertices.Add(texCoord.X);
-                vertices.Add(1.0f - texCoord.Y); // Flip Y coordinate for OpenGL
+                vertices.Add(texCoord.Y); // Keep original Y - texture loading handles the flip
             }
             else
             {
-                // Default texture coordinates
-                vertices.Add(0.0f);
-                vertices.Add(0.0f);
+                // Default texture coordinates - use vertex position as UV for basic mapping
+                if (faceVertex.VertexIndex >= 0 && faceVertex.VertexIndex < objData.Vertices.Count)
+                {
+                    var pos = objData.Vertices[faceVertex.VertexIndex];
+                    // Simple planar projection - map X and Z to UV
+                    vertices.Add((pos.X + 1.0f) * 0.5f); // Map -1..1 to 0..1
+                    vertices.Add((pos.Z + 1.0f) * 0.5f); // Map -1..1 to 0..1
+                }
+                else
+                {
+                    vertices.Add(0.5f); // Center UV
+                    vertices.Add(0.5f);
+                }
             }
 
             // Normal (optional)

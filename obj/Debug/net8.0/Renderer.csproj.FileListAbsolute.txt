@@ -45,6 +45,5 @@ C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Shaders\material.vert
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\brick.jpg
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Textures\brick_specular.png
-C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Models\Car\car.mtl
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Models\Car\car.obj
 C:\Users\FenyxPC\Desktop\Code\MiniRenderer\ConsoleApp1\bin\Debug\net8.0\Assets\Models\Car\car.png
