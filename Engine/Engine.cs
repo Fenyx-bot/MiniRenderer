@@ -5,14 +5,14 @@ using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
 using MiniRenderer.Graphics;
 using MiniRenderer.Camera;
+using MiniRenderer.Lighting;
 using System.IO;
-using System.Linq;
 
 namespace MiniRenderer.Engine
 {
     /// <summary>
-    /// Module 6: Loading 3D Models
-    /// Builds on Module 5's material system to add OBJ model loading capability
+    /// Module 7: Lighting Basics - Clean modular version
+    /// Uses dedicated lighting classes for better organization and reusability
     /// </summary>
     public class Engine : IDisposable
     {
@@ -21,13 +21,18 @@ namespace MiniRenderer.Engine
         // Camera
         private Camera3D _camera;
 
-        // Shaders (using Module 5's material shader)
-        private Shader _materialShader;
+        // Shaders
+        private Shader _lightingShader;
+
+        // Module 7: Lighting System (modular approach)
+        private LightingManager _lightingManager;
+        private LightingController _lightingController;
+        private MaterialManager _materialManager;
 
         // Module 6: 3D Models
         private List<Model> _models = new List<Model>();
 
-        // Module 5: Original cubes for comparison
+        // Module 5: Original objects for comparison
         private Mesh _cube1;
         private Mesh _cube2;
         private Mesh _grid;
@@ -38,12 +43,6 @@ namespace MiniRenderer.Engine
         private Texture _brickTexture;
         private Texture _defaultTexture;
 
-        // Materials
-        private Material _containerMaterial;
-        private Material _brickMaterial;
-        private Material _gridMaterial;
-        private Material _defaultMaterial;
-
         // Mouse state
         private Vector2 _lastMousePosition;
         private bool _firstMouseMove = true;
@@ -53,15 +52,6 @@ namespace MiniRenderer.Engine
         private float _time = 0.0f;
         private bool _autoRotate = true;
         private bool _showWireframe = false;
-
-        // Light properties
-        private Vector3 _lightPosition = new Vector3(1.2f, 1.0f, 2.0f);
-        private Vector3 _lightColor = new Vector3(1.0f, 1.0f, 1.0f);
-        private float _lightIntensity = 1.5f;
-        private bool _lightRotate = true;
-
-        // Specular testing
-        private bool _specularEnabled = true;
 
         // Flag for proper resource disposal
         private bool _disposed = false;
@@ -82,7 +72,7 @@ namespace MiniRenderer.Engine
 
         private void OnLoad()
         {
-            Console.WriteLine("Module 6: Loading 3D Models");
+            Console.WriteLine("Module 7: Lighting Basics (Modular Architecture)");
             Console.WriteLine("OpenGL Version: " + GL.GetString(StringName.Version));
 
             // Enable depth testing
@@ -92,67 +82,284 @@ namespace MiniRenderer.Engine
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-            // Set background color
-            GL.ClearColor(0.05f, 0.05f, 0.1f, 1.0f);
+            // Set background color (darker for better lighting visibility)
+            GL.ClearColor(0.02f, 0.02f, 0.05f, 1.0f);
 
             // Create directories
             Directory.CreateDirectory("Shaders");
             Directory.CreateDirectory("Assets/Textures");
             Directory.CreateDirectory("Assets/Models");
 
-            // Initialize components (Module 5 foundation)
-            CreateShaders();
-            LoadTextures();
-            CreateMaterials();
-            CreateMeshes(); // Module 5 cubes
+            // Initialize lighting system first (Module 7)
+            InitializeLightingSystem();
 
-            // Module 6: Load 3D models
+            // Initialize content (builds on Modules 5 & 6)
+            CreateLightingShaders();
+            LoadTextures();
+            CreateMeshes();
             LoadModels();
+            SetupMaterials();
 
             // Create camera
             CreateCamera();
 
             // Print controls
-            PrintControls();
+            _lightingController.PrintControls();
         }
 
         /// <summary>
-        /// Create 3D camera positioned for viewing both cubes and models
+        /// Initialize the modular lighting system
         /// </summary>
-        private void CreateCamera()
+        private void InitializeLightingSystem()
         {
-            _camera = new Camera3D(new Vector3(3, 2, 6), _window.Size.X, _window.Size.Y);
-            Console.WriteLine("✓ Camera created");
+            // Create lighting manager with default setup
+            _lightingManager = new LightingManager();
+
+            // Create lighting controller for user input
+            _lightingController = new LightingController(_lightingManager);
+
+            // Create material manager for educational material presets
+            _materialManager = new MaterialManager();
+
+            Console.WriteLine("✓ Modular lighting system initialized");
         }
 
         /// <summary>
-        /// Use Module 5's existing material shader system
+        /// Create enhanced lighting shaders
         /// </summary>
-        private void CreateShaders()
+        private void CreateLightingShaders()
         {
-            string vertexShaderPath = "Shaders/material.vert";
-            string fragmentShaderPath = "Shaders/material.frag";
+            string vertexShaderPath = "Shaders/lighting.vert";
+            string fragmentShaderPath = "Shaders/lighting.frag";
+
+            // Create enhanced lighting vertex shader
+            if (!File.Exists(vertexShaderPath))
+            {
+                File.WriteAllText(vertexShaderPath, @"#version 330 core
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec2 aTexCoord;
+layout(location = 2) in vec3 aNormal;
+layout(location = 3) in vec4 aColor;
+
+// Output to fragment shader
+out vec2 texCoord;
+out vec3 normal;
+out vec3 fragPos;
+out vec4 vertexColor;
+
+// Transformation matrices
+uniform mat4 uModel;
+uniform mat4 uView;
+uniform mat4 uProjection;
+
+// Texture tiling parameters
+uniform vec2 uTextureScale = vec2(1.0, 1.0);
+uniform vec2 uTextureOffset = vec2(0.0, 0.0);
+
+void main()
+{
+    // Calculate world space position
+    vec4 worldPos = uModel * vec4(aPosition, 1.0);
+    fragPos = worldPos.xyz;
+    
+    // Apply MVP transformation
+    gl_Position = uProjection * uView * worldPos;
+    
+    // Transform normal to world space (important for lighting)
+    normal = mat3(transpose(inverse(uModel))) * aNormal;
+    
+    // Pass texture coordinates with tiling
+    texCoord = (aTexCoord * uTextureScale) + uTextureOffset;
+    
+    // Pass vertex color
+    vertexColor = aColor;
+}");
+            }
+
+            // Create comprehensive lighting fragment shader
+            if (!File.Exists(fragmentShaderPath))
+            {
+                File.WriteAllText(fragmentShaderPath, @"#version 330 core
+// Input from vertex shader
+in vec2 texCoord;
+in vec3 normal;
+in vec3 fragPos;
+in vec4 vertexColor;
+
+// Output
+out vec4 FragColor;
+
+// Material properties
+struct Material {
+    bool useTextures;
+    vec4 diffuseColor;
+    float specularIntensity;
+    float shininess;
+    float ambientStrength;
+    float alpha;
+    sampler2D diffuseMap;
+    sampler2D specularMap;
+    bool hasSpecularMap;
+};
+
+// Light properties
+struct Light {
+    int type; // 0=Directional, 1=Point, 2=Spot
+    vec3 position;
+    vec3 direction;
+    vec3 color;
+    float intensity;
+    
+    // Attenuation (for point/spot lights)
+    float constant;
+    float linear;
+    float quadratic;
+    
+    // Spot light specific
+    float cutOff;
+    float outerCutOff;
+};
+
+// Uniforms
+uniform Material material;
+uniform Light light;
+uniform vec3 viewPos;
+
+// Lighting component toggles
+uniform bool enableAmbient;
+uniform bool enableDiffuse;
+uniform bool enableSpecular;
+uniform float ambientStrength;
+uniform float diffuseStrength;
+uniform float specularStrength;
+uniform vec3 ambientColor;
+
+vec3 calculateDirectionalLight(Light light, vec3 normal, vec3 viewDir, vec3 baseColor)
+{
+    vec3 lightDir = normalize(-light.direction);
+    
+    // Ambient
+    vec3 ambient = vec3(0.0);
+    if (enableAmbient) {
+        ambient = ambientStrength * ambientColor;
+    }
+    
+    // Diffuse
+    vec3 diffuse = vec3(0.0);
+    if (enableDiffuse) {
+        float diff = max(dot(normal, lightDir), 0.0);
+        diffuse = diff * light.color * light.intensity * diffuseStrength;
+    }
+    
+    // Specular
+    vec3 specular = vec3(0.0);
+    if (enableSpecular) {
+        vec3 reflectDir = reflect(-lightDir, normal);
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+        
+        float specularComponent = material.specularIntensity;
+        if (material.hasSpecularMap && material.useTextures) {
+            specularComponent *= texture(material.specularMap, texCoord).r;
+        }
+        
+        specular = spec * specularComponent * light.color * light.intensity * specularStrength;
+    }
+    
+    return (ambient + diffuse + specular) * baseColor;
+}
+
+vec3 calculatePointLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 baseColor)
+{
+    vec3 lightDir = normalize(light.position - fragPos);
+    float distance = length(light.position - fragPos);
+    
+    // Attenuation
+    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    
+    // Ambient
+    vec3 ambient = vec3(0.0);
+    if (enableAmbient) {
+        ambient = ambientStrength * ambientColor;
+    }
+    
+    // Diffuse
+    vec3 diffuse = vec3(0.0);
+    if (enableDiffuse) {
+        float diff = max(dot(normal, lightDir), 0.0);
+        diffuse = diff * light.color * light.intensity * diffuseStrength;
+    }
+    
+    // Specular
+    vec3 specular = vec3(0.0);
+    if (enableSpecular) {
+        vec3 reflectDir = reflect(-lightDir, normal);
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+        
+        float specularComponent = material.specularIntensity;
+        if (material.hasSpecularMap && material.useTextures) {
+            specularComponent *= texture(material.specularMap, texCoord).r;
+        }
+        
+        specular = spec * specularComponent * light.color * light.intensity * specularStrength;
+    }
+    
+    // Apply attenuation to diffuse and specular (not ambient)
+    diffuse *= attenuation;
+    specular *= attenuation;
+    
+    return (ambient + diffuse + specular) * baseColor;
+}
+
+void main()
+{
+    // Normalize normal
+    vec3 norm = normalize(normal);
+    vec3 viewDir = normalize(viewPos - fragPos);
+    
+    // Get base color
+    vec3 baseColor;
+    if (material.useTextures) {
+        baseColor = texture(material.diffuseMap, texCoord).rgb * vertexColor.rgb;
+    } else {
+        baseColor = material.diffuseColor.rgb * vertexColor.rgb;
+    }
+    
+    // Calculate lighting based on light type
+    vec3 result;
+    if (light.type == 0) { // Directional
+        result = calculateDirectionalLight(light, norm, viewDir, baseColor);
+    } else if (light.type == 1) { // Point
+        result = calculatePointLight(light, norm, fragPos, viewDir, baseColor);
+    } else { // Default to point light
+        result = calculatePointLight(light, norm, fragPos, viewDir, baseColor);
+    }
+    
+    // Get alpha
+    float alpha = material.useTextures ? texture(material.diffuseMap, texCoord).a * vertexColor.a : material.diffuseColor.a * vertexColor.a;
+    
+    FragColor = vec4(result, alpha);
+}");
+            }
 
             try
             {
-                _materialShader = Shader.FromFiles(vertexShaderPath, fragmentShaderPath);
-                Console.WriteLine("✓ Material shader loaded successfully");
+                _lightingShader = Shader.FromFiles(vertexShaderPath, fragmentShaderPath);
+                Console.WriteLine("✓ Enhanced lighting shader loaded successfully");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"✗ Error loading shader: {ex.Message}");
+                Console.WriteLine($"✗ Error loading lighting shader: {ex.Message}");
                 throw;
             }
         }
 
         /// <summary>
-        /// Load textures (Module 5 system)
+        /// Load textures (Module 5/6 foundation)
         /// </summary>
         private void LoadTextures()
         {
             _defaultTexture = Texture.CreateWhiteTexture();
 
-            // Look for textures
             string[] directories = { "Assets/Textures/", "Textures/", "" };
 
             _containerTexture = LoadTextureWithPriority(new string[] { "container.jpg", "container.png" },
@@ -172,7 +379,6 @@ namespace MiniRenderer.Engine
 
         private Texture LoadTextureWithPriority(string[] primaryNames, string[] fallbackNames, string textureType, string[] directories, bool allowNull = false)
         {
-            // Try primary names first
             foreach (string name in primaryNames)
             {
                 foreach (string dir in directories)
@@ -182,18 +388,13 @@ namespace MiniRenderer.Engine
                     {
                         try
                         {
-                            Console.WriteLine($"  ✓ Found {textureType}: {path}");
                             return new Texture(path);
                         }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"  Error loading {path}: {ex.Message}");
-                        }
+                        catch { }
                     }
                 }
             }
 
-            // Try fallback names
             foreach (string name in fallbackNames)
             {
                 foreach (string dir in directories)
@@ -203,234 +404,128 @@ namespace MiniRenderer.Engine
                     {
                         try
                         {
-                            Console.WriteLine($"  ✓ Found {textureType}: {path} (fallback)");
                             return new Texture(path);
                         }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"  Error loading {path}: {ex.Message}");
-                        }
+                        catch { }
                     }
                 }
             }
 
-            if (allowNull)
-            {
-                Console.WriteLine($"  - {textureType} not found (optional)");
-                return null;
-            }
-            else
-            {
-                Console.WriteLine($"  - {textureType} not found, using default");
-                return _defaultTexture;
-            }
+            return allowNull ? null : _defaultTexture;
         }
 
         /// <summary>
-        /// Create materials (Module 5 system)
-        /// </summary>
-        private void CreateMaterials()
-        {
-            // Container material
-            _containerMaterial = new Material(_containerTexture, _containerSpecularTexture);
-            _containerMaterial.Shininess = 128.0f;
-            _containerMaterial.SpecularIntensity = 1.5f;
-            _containerMaterial.AmbientStrength = 0.05f;
-
-            // Brick material
-            _brickMaterial = new Material(_brickTexture);
-            _brickMaterial.Shininess = 32.0f;
-            _brickMaterial.SpecularIntensity = 1.0f;
-            _brickMaterial.AmbientStrength = 0.1f;
-
-            // Grid material
-            _gridMaterial = Material.CreateColored(new Vector4(0.7f, 0.7f, 0.7f, 1.0f));
-            _gridMaterial.Shininess = 16.0f;
-            _gridMaterial.SpecularIntensity = 0.2f;
-            _gridMaterial.AmbientStrength = 0.3f;
-
-            // Default material for models (use textures if available)
-            _defaultMaterial = new Material(_containerTexture);  // Use container texture instead of solid color
-            _defaultMaterial.Shininess = 32.0f;
-            _defaultMaterial.SpecularIntensity = 0.5f;
-            _defaultMaterial.AmbientStrength = 0.2f;
-            _defaultMaterial.UseTextures = true;  // Enable textures
-
-            Console.WriteLine("✓ Materials created");
-        }
-
-        /// <summary>
-        /// Create Module 5's original cubes for comparison
+        /// Create Module 5's original objects
         /// </summary>
         private void CreateMeshes()
         {
-            // Create cubes from Module 5
             _cube1 = Mesh.CreateCube(1.0f);
-            _cube1.SetMaterial(_containerMaterial);
-            _cube1.Position = new Vector3(-3.0f, 0.5f, 0.0f);
+            _cube1.Position = new Vector3(-4.0f, 0.5f, 0.0f);
 
             _cube2 = Mesh.CreateCube(1.0f);
-            _cube2.SetMaterial(_brickMaterial);
-            _cube2.Position = new Vector3(-3.0f, 0.5f, -2.0f);
+            _cube2.Position = new Vector3(-4.0f, 0.5f, -3.0f);
 
-            // Create grid
-            _grid = Mesh.CreateGrid(10.0f, 10.0f, 10);
-            _grid.SetMaterial(_gridMaterial);
+            _grid = Mesh.CreateGrid(12.0f, 12.0f, 12);
             _grid.Position = new Vector3(0.0f, -1.0f, 0.0f);
 
-            Console.WriteLine("✓ Module 5 cubes created");
+            Console.WriteLine("✓ Module 5 objects created");
         }
 
         /// <summary>
-        /// Module 6: Load 3D models from OBJ files
+        /// Load Module 6 models
         /// </summary>
         private void LoadModels()
         {
-            Console.WriteLine("\n=== MODULE 6: Loading 3D Models ===");
+            Console.WriteLine("\n=== MODULE 6: Loading Models for Lighting ===");
 
-            // Try to load the car model
+            // Load car model
             string carObjPath = "Assets/Models/Car/car.obj";
-            bool carLoaded = false;
-
             if (File.Exists(carObjPath))
             {
                 try
                 {
-                    Console.WriteLine($"Found car model: {carObjPath}");
-                    var carModel = new Model(carObjPath, _defaultMaterial);
+                    var carModel = new Model(carObjPath);
                     carModel.Name = "Car";
-
-                    // Position the car in the center
                     carModel.Position = new Vector3(0.0f, 0.0f, 0.0f);
 
-                    // Debug: Print original bounding box
-                    Console.WriteLine($"  Original bounding box: Min={carModel.BoundingBoxMin}, Max={carModel.BoundingBoxMax}");
-                    Console.WriteLine($"  Original size: {carModel.BoundingBoxSize}");
-
-                    // Auto-scale the car to a reasonable size
                     float maxDimension = Math.Max(Math.Max(carModel.BoundingBoxSize.X, carModel.BoundingBoxSize.Y), carModel.BoundingBoxSize.Z);
-                    if (maxDimension > 0)
+                    if (maxDimension > 0 && (maxDimension < 0.5f || maxDimension > 8.0f))
                     {
-                        if (maxDimension < 0.5f || maxDimension > 8.0f)
-                        {
-                            carModel.ScaleToFit(3.0f);
-                            Console.WriteLine($"  Car auto-scaled to fit 3.0 units (was {maxDimension:F2})");
-                        }
-                        else
-                        {
-                            Console.WriteLine($"  Car size ({maxDimension:F2}) is reasonable, no auto-scaling");
-                        }
+                        carModel.ScaleToFit(3.0f);
                     }
 
                     _models.Add(carModel);
-                    carLoaded = true;
-
-                    Console.WriteLine($"✓ Car model loaded successfully!");
-                    Console.WriteLine($"  Final Position: {carModel.Position}");
-                    Console.WriteLine($"  Final Scale: {carModel.Scale}");
-                    Console.WriteLine($"  Final size: {carModel.BoundingBoxSize.X * carModel.Scale.X:F2} x {carModel.BoundingBoxSize.Y * carModel.Scale.Y:F2} x {carModel.BoundingBoxSize.Z * carModel.Scale.Z:F2}");
+                    Console.WriteLine($"✓ Car model loaded for lighting demonstration");
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"✗ Error loading car model: {ex.Message}");
-                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
             }
-            else
-            {
-                Console.WriteLine($"✗ Car model not found at: {carObjPath}");
-                Console.WriteLine("Expected file structure:");
-                Console.WriteLine("  Assets/Models/Car/car.obj");
-            }
 
-            // Create spaced test cubes for comparison
-            try
-            {
-                var testCube1 = Model.CreateCube(1.0f, _containerMaterial);
-                testCube1.Name = "Test Model Cube 1";
-                testCube1.Position = new Vector3(carLoaded ? 4.0f : 2.0f, 1.0f, 0.0f);
-                _models.Add(testCube1);
+            // Create test objects with different materials for lighting comparison
+            var testCube1 = Model.CreateCube(1.0f);
+            testCube1.Name = "Test Cube 1";
+            testCube1.Position = new Vector3(3.0f, 1.0f, 0.0f);
+            _models.Add(testCube1);
 
-                var testCube2 = Model.CreateCube(1.0f, _brickMaterial);
-                testCube2.Name = "Test Model Cube 2";
-                testCube2.Position = new Vector3(carLoaded ? 4.0f : 2.0f, 1.0f, 3.0f);
-                _models.Add(testCube2);
+            var testCube2 = Model.CreateCube(1.0f);
+            testCube2.Name = "Test Cube 2";
+            testCube2.Position = new Vector3(3.0f, 1.0f, 3.0f);
+            _models.Add(testCube2);
 
-                Console.WriteLine($"✓ Test model cubes created at {testCube1.Position} and {testCube2.Position}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"✗ Error creating test model cubes: {ex.Message}");
-            }
-
-            Console.WriteLine($"\nTotal models loaded: {_models.Count}");
-            Console.WriteLine("=== End Model Loading ===\n");
+            Console.WriteLine($"✓ {_models.Count} models loaded for lighting testing");
         }
 
-        private void PrintControls()
+        /// <summary>
+        /// Setup materials using the material manager
+        /// </summary>
+        private void SetupMaterials()
         {
-            Console.WriteLine("\n" + new string('=', 60));
-            Console.WriteLine("MODULE 6: LOADING 3D MODELS - CONTROLS");
-            Console.WriteLine(new string('=', 60));
-            Console.WriteLine("Camera:");
-            Console.WriteLine("  WASD - Move camera");
-            Console.WriteLine("  Space/Shift - Move camera up/down");
-            Console.WriteLine("  Mouse - Look around (click to capture mouse)");
-            Console.WriteLine("  Mouse Wheel - Zoom in/out");
-            Console.WriteLine("  R - Reset camera position");
-            Console.WriteLine("Controls for testing:");
-            Console.WriteLine("  Current model count: " + _models.Count);
-            Console.WriteLine("  Car should be at (0,0,0) and rotating");
-            Console.WriteLine("  Test cubes should be spread out to the right");
-            Console.WriteLine("  Press UP/DOWN to scale - watch the car get bigger/smaller");
-            Console.WriteLine("  Press C to center car - should move to align with its center");
-            Console.WriteLine("  Press 1 to add cubes - they appear in a line to the right");
-            Console.WriteLine("  Press 2 to reset car - should snap back to (0,0,0) with scale 1");
-            Console.WriteLine();
-            Console.WriteLine("Models:");
-            Console.WriteLine("  T - Toggle auto-rotation");
-            Console.WriteLine("  F - Toggle wireframe mode");
-            Console.WriteLine("  Up/Down Arrow - Scale first model");
-            Console.WriteLine("  C - Center first model at origin");
-            Console.WriteLine("  1 - Add another test cube");
-            Console.WriteLine("  2 - Reset first model position/scale");
-            Console.WriteLine();
-            Console.WriteLine("Lighting:");
-            Console.WriteLine("  L - Toggle light rotation");
-            Console.WriteLine("  G - Toggle specular on/off");
-            Console.WriteLine();
-            Console.WriteLine("  Escape - Exit");
-            Console.WriteLine(new string('=', 60));
+            // Create materials with enhanced lighting properties
+            var containerMaterial = new Material(_containerTexture, _containerSpecularTexture);
+            var brickMaterial = new Material(_brickTexture);
+            var gridMaterial = Material.CreateColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f));
 
-            if (_models.Count > 0)
+            // Apply materials to meshes
+            _cube1.SetMaterial(containerMaterial);
+            _cube2.SetMaterial(brickMaterial);
+            _grid.SetMaterial(gridMaterial);
+
+            // Add materials to the material manager for educational control
+            _materialManager.AddMaterial(containerMaterial);
+            _materialManager.AddMaterial(brickMaterial);
+            _materialManager.AddMaterial(gridMaterial);
+
+            // Add model materials to manager
+            foreach (var model in _models)
             {
-                Console.WriteLine($"\nLoaded {_models.Count} model(s):");
-                for (int i = 0; i < _models.Count; i++)
+                if (model.Mesh?.Material != null)
                 {
-                    var model = _models[i];
-                    Console.WriteLine($"  {i + 1}. {model.Name} at {model.Position}");
+                    _materialManager.AddMaterial(model.Mesh.Material);
                 }
             }
 
-            Console.WriteLine("\nModule 5 objects still available:");
-            Console.WriteLine("  - Container cube (left side)");
-            Console.WriteLine("  - Brick cube (left side)");
-            Console.WriteLine("  - Grid (floor)");
-            Console.WriteLine();
+            // Apply default material preset
+            _materialManager.ApplyPreset("Default");
+
+            Console.WriteLine("✓ Materials setup with lighting manager");
+        }
+
+        private void CreateCamera()
+        {
+            _camera = new Camera3D(new Vector3(3, 3, 8), _window.Size.X, _window.Size.Y);
+            Console.WriteLine("✓ Camera created");
         }
 
         private void OnKeyDown(KeyboardKeyEventArgs e)
         {
+            // Handle basic model controls
             switch (e.Key)
             {
                 case Keys.R:
                     CreateCamera();
                     Console.WriteLine("Camera reset");
-                    break;
-
-                case Keys.L:
-                    _lightRotate = !_lightRotate;
-                    Console.WriteLine($"Light rotation: {_lightRotate}");
                     break;
 
                 case Keys.T:
@@ -440,28 +535,15 @@ namespace MiniRenderer.Engine
 
                 case Keys.F:
                     _showWireframe = !_showWireframe;
-                    if (_showWireframe)
-                    {
-                        GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-                        Console.WriteLine("Wireframe mode enabled");
-                    }
-                    else
-                    {
-                        GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
-                        Console.WriteLine("Wireframe mode disabled");
-                    }
-                    break;
-
-                case Keys.G:
-                    _specularEnabled = !_specularEnabled;
-                    Console.WriteLine($"Specular lighting: {(_specularEnabled ? "ENABLED" : "DISABLED")}");
+                    GL.PolygonMode(MaterialFace.FrontAndBack, _showWireframe ? PolygonMode.Line : PolygonMode.Fill);
+                    Console.WriteLine($"Wireframe: {_showWireframe}");
                     break;
 
                 case Keys.Up:
                     if (_models.Count > 0)
                     {
                         _models[0].Scale *= 1.1f;
-                        Console.WriteLine($"Scaled {_models[0].Name} up: Scale={_models[0].Scale.X:F2}, Position={_models[0].Position}");
+                        Console.WriteLine($"Scaled {_models[0].Name}: {_models[0].Scale.X:F2}");
                     }
                     break;
 
@@ -469,44 +551,30 @@ namespace MiniRenderer.Engine
                     if (_models.Count > 0)
                     {
                         _models[0].Scale *= 0.9f;
-                        Console.WriteLine($"Scaled {_models[0].Name} down: Scale={_models[0].Scale.X:F2}, Position={_models[0].Position}");
+                        Console.WriteLine($"Scaled {_models[0].Name}: {_models[0].Scale.X:F2}");
                     }
                     break;
 
-                case Keys.C:
-                    if (_models.Count > 0)
-                    {
-                        var oldPos = _models[0].Position;
-                        _models[0].CenterAtOrigin();
-                        Console.WriteLine($"Centered {_models[0].Name}: {oldPos} -> {_models[0].Position}");
-                        Console.WriteLine($"  Bounding box center was: {_models[0].BoundingBoxCenter}");
-                    }
+                // Material controls using material manager
+                case Keys.M:
+                    string newPreset = _materialManager.CyclePreset();
+                    Console.WriteLine($"Material preset: {newPreset}");
                     break;
 
-                case Keys.D1:
-                    var newTestCube = Model.CreateCube(1.0f, _containerMaterial);
-                    newTestCube.Name = $"Test Cube {_models.Count + 1}";
-                    // Place new cubes in a line to the right
-                    newTestCube.Position = new Vector3(
-                        6.0f + (_models.Count * 2.0f), // Spread them out to the right
-                        1.0f,
-                        (float)(new Random().NextDouble() * 2 - 1)  // -1 to 1 for slight variation
-                    );
-                    _models.Add(newTestCube);
-                    Console.WriteLine($"Added {newTestCube.Name} at {newTestCube.Position}");
+                case Keys.N:
+                    _materialManager.AdjustShininess(-8.0f);
                     break;
 
-                case Keys.D2:
-                    if (_models.Count > 0)
-                    {
-                        var oldPos = _models[0].Position;
-                        var oldScale = _models[0].Scale;
-                        _models[0].Position = Vector3.Zero;
-                        _models[0].Scale = Vector3.One;
-                        Console.WriteLine($"Reset {_models[0].Name}:");
-                        Console.WriteLine($"  Position: {oldPos} -> {_models[0].Position}");
-                        Console.WriteLine($"  Scale: {oldScale} -> {_models[0].Scale}");
-                    }
+                case Keys.B:
+                    _materialManager.AdjustShininess(8.0f);
+                    break;
+
+                case Keys.K:
+                    _materialManager.AdjustSpecularIntensity(-0.1f);
+                    break;
+
+                case Keys.I:
+                    _materialManager.AdjustSpecularIntensity(0.1f);
                     break;
             }
         }
@@ -572,12 +640,18 @@ namespace MiniRenderer.Engine
 
             HandleCameraMovement((float)e.Time);
             UpdateObjects((float)e.Time);
-            UpdateLight((float)e.Time);
+
+            // Update lighting system (Module 7)
+            _lightingManager.Update((float)e.Time);
+            _lightingController.Update((float)e.Time);
+
+            // Handle lighting input
+            _lightingController.HandleInput(_window.KeyboardState);
         }
 
         private void HandleCameraMovement(float deltaTime)
         {
-            float speed = 3.0f * deltaTime;
+            float speed = 5.0f * deltaTime;
             Vector3 movement = Vector3.Zero;
 
             var keyboard = _window.KeyboardState;
@@ -607,25 +681,14 @@ namespace MiniRenderer.Engine
                     if (i == 0)
                     {
                         // First model (car) rotates around Y axis
-                        _models[i].Rotation += new Vector3(0, 30 * deltaTime, 0);
+                        _models[i].Rotation += new Vector3(0, 20 * deltaTime, 0);
                     }
                     else
                     {
-                        // Other models rotate differently for variety
-                        _models[i].Rotation += new Vector3(10 * deltaTime, 20 * deltaTime, 0);
+                        // Other models rotate differently
+                        _models[i].Rotation += new Vector3(5 * deltaTime, 10 * deltaTime, 0);
                     }
                 }
-            }
-        }
-
-        private void UpdateLight(float deltaTime)
-        {
-            if (_lightRotate)
-            {
-                float radius = 3.0f;
-                float angle = _time * 0.5f;
-                _lightPosition.X = (float)Math.Sin(angle) * radius;
-                _lightPosition.Z = (float)Math.Cos(angle) * radius;
             }
         }
 
@@ -637,36 +700,26 @@ namespace MiniRenderer.Engine
             Matrix4 viewMatrix = _camera.GetViewMatrix();
             Matrix4 projectionMatrix = _camera.GetProjectionMatrix();
 
-            // Set common shader uniforms
-            _materialShader.Use();
-            _materialShader.SetMatrix4("uView", viewMatrix);
-            _materialShader.SetMatrix4("uProjection", projectionMatrix);
+            // Set up lighting shader
+            _lightingShader.Use();
+            _lightingShader.SetMatrix4("uView", viewMatrix);
+            _lightingShader.SetMatrix4("uProjection", projectionMatrix);
 
-            // Set light properties
-            _materialShader.SetVector3("light.position", _lightPosition);
-            _materialShader.SetVector3("light.color", _lightColor);
-            _materialShader.SetFloat("light.intensity", _lightIntensity);
-            _materialShader.SetFloat("light.constant", 1.0f);
-            _materialShader.SetFloat("light.linear", 0.045f);
-            _materialShader.SetFloat("light.quadratic", 0.0075f);
-            _materialShader.SetBool("light.isDirectional", false);
+            // Apply lighting using the lighting manager
+            _lightingManager.ApplyToShader(_lightingShader, _camera.Position);
 
-            // Global specular toggle
-            _materialShader.SetBool("uSpecularEnabled", _specularEnabled);
+            // Render all objects with lighting
+            _grid?.Render(_lightingShader);
+            _cube1?.Render(_lightingShader);
+            _cube2?.Render(_lightingShader);
 
-            // Set camera position for specular calculations
-            _materialShader.SetVector3("viewPos", _camera.Position);
-
-            // Render Module 5 objects
-            _grid?.Render(_materialShader);
-            _cube1?.Render(_materialShader);
-            _cube2?.Render(_materialShader);
-
-            // Render Module 6 models
             foreach (var model in _models)
             {
-                model?.Render(_materialShader);
+                model?.Render(_lightingShader);
             }
+
+            // Render light visualization
+            _lightingManager.RenderLightVisualization(_lightingShader);
 
             _window.SwapBuffers();
         }
@@ -680,6 +733,10 @@ namespace MiniRenderer.Engine
         {
             if (!_disposed)
             {
+                // Dispose lighting system
+                _lightingManager?.Dispose();
+                _materialManager?.Dispose();
+
                 // Dispose models
                 foreach (var model in _models)
                 {
@@ -687,13 +744,13 @@ namespace MiniRenderer.Engine
                 }
                 _models.Clear();
 
-                // Dispose Module 5 meshes
+                // Dispose meshes
                 _cube1?.Dispose();
                 _cube2?.Dispose();
                 _grid?.Dispose();
 
                 // Dispose shaders
-                _materialShader?.Dispose();
+                _lightingShader?.Dispose();
 
                 // Dispose textures
                 _containerTexture?.Dispose();
