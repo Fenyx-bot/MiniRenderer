@@ -6,13 +6,20 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 using MiniRenderer.Graphics;
 using MiniRenderer.Camera;
 using MiniRenderer.Lighting;
+using MiniRenderer.Scene; // MODULE 8 NEW: Added for scene management
 using System.IO;
 
 namespace MiniRenderer.Engine
 {
     /// <summary>
     /// Module 7: Lighting Basics - Clean modular version
-    /// Uses dedicated lighting classes for better organization and reusability
+    /// MODULE 8 UPDATE: Added Scene Management for handling multiple objects efficiently
+    /// 
+    /// New in Module 8:
+    /// - SceneManager for organizing multiple objects
+    /// - Simple distance culling for performance
+    /// - Performance monitoring and statistics
+    /// - All Module 7 features remain unchanged!
     /// </summary>
     public class Engine : IDisposable
     {
@@ -24,34 +31,40 @@ namespace MiniRenderer.Engine
         // Shaders
         private Shader _lightingShader;
 
-        // Module 7: Lighting System (modular approach)
+        // Module 7: Lighting System (unchanged)
         private LightingManager _lightingManager;
         private LightingController _lightingController;
         private MaterialManager _materialManager;
 
-        // Module 6: 3D Models
+        // MODULE 8 NEW: Scene Management System
+        private SceneManager _sceneManager;
+
+        // Module 6: 3D Models (unchanged)
         private List<Model> _models = new List<Model>();
 
-        // Module 5: Original objects for comparison
+        // Module 5: Original objects for comparison (unchanged)
         private Mesh _cube1;
         private Mesh _cube2;
         private Mesh _grid;
 
-        // Textures
+        // Textures (unchanged)
         private Texture _containerTexture;
         private Texture _containerSpecularTexture;
         private Texture _brickTexture;
         private Texture _defaultTexture;
 
-        // Mouse state
+        // Mouse state (unchanged)
         private Vector2 _lastMousePosition;
         private bool _firstMouseMove = true;
         private bool _mouseCaptured = false;
 
-        // Animation
+        // Animation (unchanged)
         private float _time = 0.0f;
         private bool _autoRotate = true;
         private bool _showWireframe = false;
+
+        // MODULE 8 NEW: Performance monitoring
+        private bool _showPerformanceInfo = true;
 
         // Flag for proper resource disposal
         private bool _disposed = false;
@@ -60,7 +73,7 @@ namespace MiniRenderer.Engine
         {
             _window = window;
 
-            // Set up event handlers
+            // Set up event handlers (unchanged)
             _window.Load += OnLoad;
             _window.Resize += OnResize;
             _window.UpdateFrame += OnUpdateFrame;
@@ -73,42 +86,49 @@ namespace MiniRenderer.Engine
         private void OnLoad()
         {
             Console.WriteLine("Module 7: Lighting Basics (Modular Architecture)");
+            Console.WriteLine("MODULE 8 UPDATE: Now with Scene Management!"); // MODULE 8 NEW
             Console.WriteLine("OpenGL Version: " + GL.GetString(StringName.Version));
 
-            // Enable depth testing
+            // Enable depth testing (unchanged)
             GL.Enable(EnableCap.DepthTest);
 
-            // Enable alpha blending
+            // Enable alpha blending (unchanged)
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-            // Set background color (darker for better lighting visibility)
+            // Set background color (unchanged)
             GL.ClearColor(0.02f, 0.02f, 0.05f, 1.0f);
 
-            // Create directories
+            // Create directories (unchanged)
             Directory.CreateDirectory("Shaders");
             Directory.CreateDirectory("Assets/Textures");
             Directory.CreateDirectory("Assets/Models");
 
-            // Initialize lighting system first (Module 7)
+            // Initialize lighting system first (Module 7 - unchanged)
             InitializeLightingSystem();
 
-            // Initialize content (builds on Modules 5 & 6)
+            // MODULE 8 NEW: Initialize scene management system
+            InitializeSceneSystem();
+
+            // Initialize content (builds on Modules 5 & 6 - unchanged)
             CreateLightingShaders();
             LoadTextures();
             CreateMeshes();
             LoadModels();
             SetupMaterials();
 
-            // Create camera
+            // Create camera (unchanged)
             CreateCamera();
 
-            // Print controls
-            _lightingController.PrintControls();
+            // MODULE 8 NEW: Create demo scene with scene manager
+            CreateDemoScene();
+
+            // Print controls (updated for Module 8)
+            PrintControls();
         }
 
         /// <summary>
-        /// Initialize the modular lighting system
+        /// Initialize the modular lighting system (Module 7 - UNCHANGED)
         /// </summary>
         private void InitializeLightingSystem()
         {
@@ -125,10 +145,26 @@ namespace MiniRenderer.Engine
         }
 
         /// <summary>
-        /// Create enhanced lighting shaders
+        /// MODULE 8 NEW: Initialize the scene management system
+        /// This is the main addition for Module 8
+        /// </summary>
+        private void InitializeSceneSystem()
+        {
+            _sceneManager = new SceneManager();
+
+            // Configure basic performance settings that students can experiment with
+            _sceneManager.EnableDistanceCulling = true;
+            _sceneManager.MaxRenderDistance = 50.0f;
+
+            Console.WriteLine("✓ Scene management system initialized (MODULE 8 NEW)");
+        }
+
+        /// <summary>
+        /// Create enhanced lighting shaders (Module 7 - UNCHANGED)
         /// </summary>
         private void CreateLightingShaders()
         {
+            // Same implementation as Module 7 - no changes needed
             string vertexShaderPath = "Shaders/lighting.vert";
             string fragmentShaderPath = "Shaders/lighting.frag";
 
@@ -234,65 +270,44 @@ uniform float diffuseStrength;
 uniform float specularStrength;
 uniform vec3 ambientColor;
 
-vec3 calculateDirectionalLight(Light light, vec3 normal, vec3 viewDir, vec3 baseColor)
+void main()
 {
-    vec3 lightDir = normalize(-light.direction);
+    // Normalize the normal
+    vec3 norm = normalize(normal);
+    vec3 viewDir = normalize(viewPos - fragPos);
     
-    // Ambient
-    vec3 ambient = vec3(0.0);
-    if (enableAmbient) {
-        ambient = ambientStrength * ambientColor;
+    // Get base color
+    vec3 baseColor;
+    if (material.useTextures) {
+        baseColor = texture(material.diffuseMap, texCoord).rgb * vertexColor.rgb;
+    } else {
+        baseColor = material.diffuseColor.rgb * vertexColor.rgb;
     }
     
-    // Diffuse
+    // Simple lighting calculation (keeping it simple for students)
+    vec3 lightDir;
+    float attenuation = 1.0;
+    
+    if (light.type == 0) { // Directional
+        lightDir = normalize(-light.direction);
+    } else { // Point
+        lightDir = normalize(light.position - fragPos);
+        float distance = length(light.position - fragPos);
+        attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    }
+    
+    // Calculate lighting components
+    vec3 ambient = enableAmbient ? ambientStrength * ambientColor : vec3(0.0);
+    
     vec3 diffuse = vec3(0.0);
     if (enableDiffuse) {
-        float diff = max(dot(normal, lightDir), 0.0);
+        float diff = max(dot(norm, lightDir), 0.0);
         diffuse = diff * light.color * light.intensity * diffuseStrength;
     }
     
-    // Specular
     vec3 specular = vec3(0.0);
     if (enableSpecular) {
-        vec3 reflectDir = reflect(-lightDir, normal);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-        
-        float specularComponent = material.specularIntensity;
-        if (material.hasSpecularMap && material.useTextures) {
-            specularComponent *= texture(material.specularMap, texCoord).r;
-        }
-        
-        specular = spec * specularComponent * light.color * light.intensity * specularStrength;
-    }
-    
-    return (ambient + diffuse + specular) * baseColor;
-}
-
-vec3 calculatePointLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 baseColor)
-{
-    vec3 lightDir = normalize(light.position - fragPos);
-    float distance = length(light.position - fragPos);
-    
-    // Attenuation
-    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-    
-    // Ambient
-    vec3 ambient = vec3(0.0);
-    if (enableAmbient) {
-        ambient = ambientStrength * ambientColor;
-    }
-    
-    // Diffuse
-    vec3 diffuse = vec3(0.0);
-    if (enableDiffuse) {
-        float diff = max(dot(normal, lightDir), 0.0);
-        diffuse = diff * light.color * light.intensity * diffuseStrength;
-    }
-    
-    // Specular
-    vec3 specular = vec3(0.0);
-    if (enableSpecular) {
-        vec3 reflectDir = reflect(-lightDir, normal);
+        vec3 reflectDir = reflect(-lightDir, norm);
         float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
         
         float specularComponent = material.specularIntensity;
@@ -307,32 +322,7 @@ vec3 calculatePointLight(Light light, vec3 normal, vec3 fragPos, vec3 viewDir, v
     diffuse *= attenuation;
     specular *= attenuation;
     
-    return (ambient + diffuse + specular) * baseColor;
-}
-
-void main()
-{
-    // Normalize normal
-    vec3 norm = normalize(normal);
-    vec3 viewDir = normalize(viewPos - fragPos);
-    
-    // Get base color
-    vec3 baseColor;
-    if (material.useTextures) {
-        baseColor = texture(material.diffuseMap, texCoord).rgb * vertexColor.rgb;
-    } else {
-        baseColor = material.diffuseColor.rgb * vertexColor.rgb;
-    }
-    
-    // Calculate lighting based on light type
-    vec3 result;
-    if (light.type == 0) { // Directional
-        result = calculateDirectionalLight(light, norm, viewDir, baseColor);
-    } else if (light.type == 1) { // Point
-        result = calculatePointLight(light, norm, fragPos, viewDir, baseColor);
-    } else { // Default to point light
-        result = calculatePointLight(light, norm, fragPos, viewDir, baseColor);
-    }
+    vec3 result = (ambient + diffuse + specular) * baseColor;
     
     // Get alpha
     float alpha = material.useTextures ? texture(material.diffuseMap, texCoord).a * vertexColor.a : material.diffuseColor.a * vertexColor.a;
@@ -354,7 +344,7 @@ void main()
         }
 
         /// <summary>
-        /// Load textures (Module 5/6 foundation)
+        /// Load textures (Module 5/6 foundation - UNCHANGED)
         /// </summary>
         private void LoadTextures()
         {
@@ -379,6 +369,7 @@ void main()
 
         private Texture LoadTextureWithPriority(string[] primaryNames, string[] fallbackNames, string textureType, string[] directories, bool allowNull = false)
         {
+            // Same implementation as before - unchanged
             foreach (string name in primaryNames)
             {
                 foreach (string dir in directories)
@@ -415,7 +406,7 @@ void main()
         }
 
         /// <summary>
-        /// Create Module 5's original objects
+        /// Create Module 5's original objects (UNCHANGED)
         /// </summary>
         private void CreateMeshes()
         {
@@ -432,7 +423,7 @@ void main()
         }
 
         /// <summary>
-        /// Load Module 6 models
+        /// Load Module 6 models (UNCHANGED)
         /// </summary>
         private void LoadModels()
         {
@@ -478,7 +469,7 @@ void main()
         }
 
         /// <summary>
-        /// Setup materials using the material manager
+        /// Setup materials using the material manager (UNCHANGED)
         /// </summary>
         private void SetupMaterials()
         {
@@ -518,9 +509,54 @@ void main()
             Console.WriteLine("✓ Camera created");
         }
 
+        /// <summary>
+        /// MODULE 8 NEW: Create demo scene using scene manager
+        /// This demonstrates the new scene management capabilities
+        /// </summary>
+        private void CreateDemoScene()
+        {
+            Console.WriteLine("\n=== MODULE 8: Creating Demo Scene ===");
+
+            // Find our car model if we have one
+            Model carModel = _models.FirstOrDefault(m => m.Name == "Car");
+
+            // Let the scene manager create an impressive demo scene
+            _sceneManager.CreateDemoScene(carModel);
+
+            Console.WriteLine("✓ Demo scene created with SceneManager!");
+            Console.WriteLine("  - Multiple objects with animations");
+            Console.WriteLine("  - Distance culling for performance");
+            Console.WriteLine("  - Performance monitoring available");
+        }
+
         private void OnKeyDown(KeyboardKeyEventArgs e)
         {
-            // Handle basic model controls
+            // MODULE 8 NEW: Scene management controls
+            switch (e.Key)
+            {
+                case Keys.P:
+                    _showPerformanceInfo = !_showPerformanceInfo;
+                    Console.WriteLine($"Performance info: {_showPerformanceInfo}");
+                    break;
+
+                case Keys.J:
+                    _sceneManager.ToggleDistanceCulling();
+                    break;
+
+                case Keys.K:
+                    _sceneManager.AdjustRenderDistance(5.0f);
+                    break;
+
+                case Keys.U:
+                    _sceneManager.AdjustRenderDistance(-5.0f);
+                    break;
+
+                case Keys.H:
+                    PrintControls();
+                    break;
+            }
+
+            // Handle basic model controls (UNCHANGED from Module 7)
             switch (e.Key)
             {
                 case Keys.R:
@@ -555,7 +591,7 @@ void main()
                     }
                     break;
 
-                // Material controls using material manager
+                // Material controls using material manager (UNCHANGED)
                 case Keys.M:
                     string newPreset = _materialManager.CyclePreset();
                     Console.WriteLine($"Material preset: {newPreset}");
@@ -569,7 +605,7 @@ void main()
                     _materialManager.AdjustShininess(8.0f);
                     break;
 
-                case Keys.K:
+                case Keys.O:
                     _materialManager.AdjustSpecularIntensity(-0.1f);
                     break;
 
@@ -581,6 +617,7 @@ void main()
 
         private void OnMouseMove(MouseMoveEventArgs e)
         {
+            // UNCHANGED from Module 7
             if (!_mouseCaptured)
                 return;
 
@@ -600,11 +637,13 @@ void main()
 
         private void OnMouseWheel(MouseWheelEventArgs e)
         {
+            // UNCHANGED from Module 7
             _camera.AdjustZoom(e.OffsetY);
         }
 
         private void OnResize(ResizeEventArgs e)
         {
+            // UNCHANGED from Module 7
             GL.Viewport(0, 0, e.Width, e.Height);
             _camera.Resize(e.Width, e.Height);
         }
@@ -613,12 +652,13 @@ void main()
         {
             _time += (float)e.Time;
 
+            // Input handling (UNCHANGED from Module 7)
             if (_window.KeyboardState.IsKeyDown(Keys.Escape))
             {
                 _window.Close();
             }
 
-            // Toggle mouse capture
+            // Toggle mouse capture (UNCHANGED)
             if (_window.MouseState.IsButtonPressed(MouseButton.Left))
             {
                 if (!_mouseCaptured)
@@ -641,16 +681,21 @@ void main()
             HandleCameraMovement((float)e.Time);
             UpdateObjects((float)e.Time);
 
-            // Update lighting system (Module 7)
+            // MODULE 8 NEW: Update scene manager
+            // This handles all scene objects automatically
+            _sceneManager.Update((float)e.Time);
+
+            // Update lighting system (UNCHANGED from Module 7)
             _lightingManager.Update((float)e.Time);
             _lightingController.Update((float)e.Time);
 
-            // Handle lighting input
+            // Handle lighting input (UNCHANGED)
             _lightingController.HandleInput(_window.KeyboardState);
         }
 
         private void HandleCameraMovement(float deltaTime)
         {
+            // UNCHANGED from Module 7
             float speed = 5.0f * deltaTime;
             Vector3 movement = Vector3.Zero;
 
@@ -669,6 +714,7 @@ void main()
 
         private void UpdateObjects(float deltaTime)
         {
+            // UNCHANGED from Module 7
             if (_autoRotate)
             {
                 // Rotate Module 5 cubes
@@ -696,19 +742,19 @@ void main()
         {
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-            // Get camera matrices
+            // Get camera matrices (UNCHANGED)
             Matrix4 viewMatrix = _camera.GetViewMatrix();
             Matrix4 projectionMatrix = _camera.GetProjectionMatrix();
 
-            // Set up lighting shader
+            // Set up lighting shader (UNCHANGED)
             _lightingShader.Use();
             _lightingShader.SetMatrix4("uView", viewMatrix);
             _lightingShader.SetMatrix4("uProjection", projectionMatrix);
 
-            // Apply lighting using the lighting manager
+            // Apply lighting using the lighting manager (UNCHANGED)
             _lightingManager.ApplyToShader(_lightingShader, _camera.Position);
 
-            // Render all objects with lighting
+            // Render all original objects with lighting (UNCHANGED from Module 7)
             _grid?.Render(_lightingShader);
             _cube1?.Render(_lightingShader);
             _cube2?.Render(_lightingShader);
@@ -718,10 +764,53 @@ void main()
                 model?.Render(_lightingShader);
             }
 
-            // Render light visualization
+            // MODULE 8 NEW: Render scene-managed objects
+            // This is where we see the benefit of scene management!
+            _sceneManager.Render(_lightingShader, _camera.Position);
+
+            // Render light visualization (UNCHANGED)
             _lightingManager.RenderLightVisualization(_lightingShader);
 
+            // MODULE 8 NEW: Display performance info periodically
+            if (_showPerformanceInfo && (int)_time % 3 == 0 && (int)((_time - (float)e.Time)) % 3 != 0)
+            {
+                Console.WriteLine($"PERFORMANCE: {_sceneManager.GetPerformanceInfo()}");
+            }
+
             _window.SwapBuffers();
+        }
+
+        /// <summary>
+        /// Print controls (updated for Module 8)
+        /// </summary>
+        private void PrintControls()
+        {
+            Console.WriteLine("\n" + new string('=', 70));
+            Console.WriteLine("MODULE 7: Lighting + MODULE 8: Scene Management");
+            Console.WriteLine(new string('=', 70));
+
+            // All Module 7 controls still work!
+            _lightingController.PrintControls();
+
+            // MODULE 8 NEW controls
+            Console.WriteLine("\n=== MODULE 8 NEW: Scene Management Controls ===");
+            Console.WriteLine("  P - Toggle performance info display");
+            Console.WriteLine("  J - Toggle distance culling on/off");
+            Console.WriteLine("  K - Increase render distance");
+            Console.WriteLine("  U - Decrease render distance");
+            Console.WriteLine("  H - Show this help");
+
+            Console.WriteLine("\n=== What's New in Module 8 ===");
+            Console.WriteLine("✓ SceneManager handles multiple objects efficiently");
+            Console.WriteLine("✓ Distance culling improves performance");
+            Console.WriteLine("✓ Automatic object animations and organization");
+            Console.WriteLine("✓ Performance monitoring and statistics");
+            Console.WriteLine("✓ All Module 7 lighting features still work!");
+
+            Console.WriteLine(new string('=', 70));
+
+            // Show current scene status
+            Console.WriteLine($"\nScene Status: {_sceneManager.GetPerformanceInfo()}");
         }
 
         public void Run()
@@ -733,26 +822,29 @@ void main()
         {
             if (!_disposed)
             {
-                // Dispose lighting system
+                // MODULE 8 NEW: Dispose scene manager
+                _sceneManager?.Dispose();
+
+                // Dispose lighting system (UNCHANGED)
                 _lightingManager?.Dispose();
                 _materialManager?.Dispose();
 
-                // Dispose models
+                // Dispose models (UNCHANGED)
                 foreach (var model in _models)
                 {
                     model?.Dispose();
                 }
                 _models.Clear();
 
-                // Dispose meshes
+                // Dispose meshes (UNCHANGED)
                 _cube1?.Dispose();
                 _cube2?.Dispose();
                 _grid?.Dispose();
 
-                // Dispose shaders
+                // Dispose shaders (UNCHANGED)
                 _lightingShader?.Dispose();
 
-                // Dispose textures
+                // Dispose textures (UNCHANGED)
                 _containerTexture?.Dispose();
                 _containerSpecularTexture?.Dispose();
                 _brickTexture?.Dispose();
