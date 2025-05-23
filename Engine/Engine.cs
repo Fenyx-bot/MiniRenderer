@@ -170,131 +170,13 @@ namespace MiniRenderer.Engine
             // Create enhanced lighting vertex shader
             if (!File.Exists(vertexShaderPath))
             {
-                File.WriteAllText(vertexShaderPath, @"#version 330 core
-layout(location = 0) in vec3 aPosition;
-layout(location = 1) in vec2 aTexCoord;
-layout(location = 2) in vec3 aNormal;
-layout(location = 3) in vec4 aColor;
-
-out vec2 texCoord;
-out vec3 normal;
-out vec3 fragPos;
-out vec4 vertexColor;
-
-uniform mat4 uModel;
-uniform mat4 uView;
-uniform mat4 uProjection;
-uniform vec2 uTextureScale = vec2(1.0, 1.0);
-uniform vec2 uTextureOffset = vec2(0.0, 0.0);
-
-void main()
-{
-    vec4 worldPos = uModel * vec4(aPosition, 1.0);
-    fragPos = worldPos.xyz;
-    gl_Position = uProjection * uView * worldPos;
-    normal = mat3(transpose(inverse(uModel))) * aNormal;
-    texCoord = (aTexCoord * uTextureScale) + uTextureOffset;
-    vertexColor = aColor;
-}");
+                throw new Exception($"{vertexShaderPath} does not exist.");
             }
 
             // Create comprehensive lighting fragment shader
             if (!File.Exists(fragmentShaderPath))
             {
-                File.WriteAllText(fragmentShaderPath, @"#version 330 core
-in vec2 texCoord;
-in vec3 normal;
-in vec3 fragPos;
-in vec4 vertexColor;
-
-out vec4 FragColor;
-
-struct Material {
-    bool useTextures;
-    vec4 diffuseColor;
-    float specularIntensity;
-    float shininess;
-    float ambientStrength;
-    float alpha;
-    sampler2D diffuseMap;
-    sampler2D specularMap;
-    bool hasSpecularMap;
-};
-
-struct Light {
-    int type;
-    vec3 position;
-    vec3 direction;
-    vec3 color;
-    float intensity;
-    float constant;
-    float linear;
-    float quadratic;
-    float cutOff;
-    float outerCutOff;
-};
-
-uniform Material material;
-uniform Light light;
-uniform vec3 viewPos;
-uniform bool enableAmbient;
-uniform bool enableDiffuse;
-uniform bool enableSpecular;
-uniform float ambientStrength;
-uniform float diffuseStrength;
-uniform float specularStrength;
-uniform vec3 ambientColor;
-
-void main()
-{
-    vec3 norm = normalize(normal);
-    vec3 viewDir = normalize(viewPos - fragPos);
-    
-    vec3 baseColor;
-    if (material.useTextures) {
-        baseColor = texture(material.diffuseMap, texCoord).rgb * vertexColor.rgb;
-    } else {
-        baseColor = material.diffuseColor.rgb * vertexColor.rgb;
-    }
-    
-    vec3 lightDir;
-    float attenuation = 1.0;
-    
-    if (light.type == 0) {
-        lightDir = normalize(-light.direction);
-    } else {
-        lightDir = normalize(light.position - fragPos);
-        float distance = length(light.position - fragPos);
-        attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-    }
-    
-    vec3 ambient = enableAmbient ? ambientStrength * ambientColor : vec3(0.0);
-    
-    vec3 diffuse = vec3(0.0);
-    if (enableDiffuse) {
-        float diff = max(dot(norm, lightDir), 0.0);
-        diffuse = diff * light.color * light.intensity * diffuseStrength;
-    }
-    
-    vec3 specular = vec3(0.0);
-    if (enableSpecular) {
-        vec3 reflectDir = reflect(-lightDir, norm);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-        float specularComponent = material.specularIntensity;
-        if (material.hasSpecularMap && material.useTextures) {
-            specularComponent *= texture(material.specularMap, texCoord).r;
-        }
-        specular = spec * specularComponent * light.color * light.intensity * specularStrength;
-    }
-    
-    diffuse *= attenuation;
-    specular *= attenuation;
-    
-    vec3 result = (ambient + diffuse + specular) * baseColor;
-    float alpha = material.useTextures ? texture(material.diffuseMap, texCoord).a * vertexColor.a : material.diffuseColor.a * vertexColor.a;
-    
-    FragColor = vec4(result, alpha);
-}");
+                throw new Exception($"{fragmentShaderPath} does not exist.");
             }
 
             try
